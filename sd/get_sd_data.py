@@ -12,15 +12,18 @@ __email__ = "shibaji7@vt.edu"
 __status__ = "Research"
 
 import numpy as np
+import pandas as pd
 import datetime as dt
 import glob
 import bz2
 import pydarn
 
+from utils import Skills
+
 class Gate(object):
     """Class object to hold each range cell value"""
 
-    def __init__(self, bm, i, params=["pwr0", "v", "w_l", "gflg", "p_l", "v_e"]):
+    def __init__(self, bm, i, params=["v", "w_l", "gflg", "p_l", "v_e"], gflg_type=-1):
         """
         initialize the parameters which will be stored
         bm: beam object
@@ -28,7 +31,8 @@ class Gate(object):
         params: parameters to store
         """
         for p in params:
-            setattr(self, p, getattr(p)[i])
+            setattr(self, p, getattr(bm, p)[i])
+        if gflg_type >= 0: setattr(self, "gflg", getattr(bm, "gsflg")[gflg_type][i])
         return
 
 
@@ -63,12 +67,9 @@ class Beam(object):
     def copy(self, bm):
         """
         Copy all parameters
-        time: datetime of beam
-        s_param: other scalar params
-        v_params: other list params
         """
         for p in bm.__dict__.keys():
-            setattr(self, p, getattr(p))
+            setattr(self, p, getattr(bm, p))
         return
 
     def gs_estimation(self):
@@ -78,8 +79,6 @@ class Beam(object):
                 0. Sundeen et al. |v| + w/3 < 30 m/s
                 1. Blanchard et al. |v| + 0.4w < 60 m/s
                 2. Blanchard et al. [2009] |v| - 0.139w + 0.00113w^2 < 33.1 m/s
-                3. Baker et al [1988] Even Thomas
-                4. Baker et al [1988] Even Thomas
         """
         self.gsflg = {}
         if len(self.v) > 0 and len(self.w_l) > 0: self.gsflg[0] = ((np.abs(self.v) + self.w_l/3.) < 30.).astype(int)
@@ -104,12 +103,44 @@ class Scan(object):
         self.beams = []
         return
 
-    def update_time(self):
+    def update_time(self, up=True):
         """
         Update stime and etime of the scan.
+        up: Update average parameters if True
         """
         self.stime = self.beams[0].time
         self.etime = self.beams[-1].time
+        if up: self._populate_avg_params()
+        return
+
+    def _populate_avg_params(self):
+        """
+        Polulate average parameetrs
+        """
+        f, nsky = [], []
+        for b in self.beams:
+            f.append(getattr(b, "tfreq"))
+            nsky.append(getattr(b, "noise.sky"))
+        self.f, self.nsky = np.mean(f), np.mean(nsky)
+        return
+
+    def _estimat_skills(self, v_params=["v", "w_l", "p_l", "slist"], s_params=["bmnum"]):
+        """
+        Only used on the median filtered scan data.
+        Estimate skills of the median filterd data
+        """
+        self.skills, labels = {}, {"CONV":[], "KDE":[]}
+        _u = {key: [] for key in v_params + s_params}
+        for b in self.beams:
+            labels["CONV"].extend(getattr(b, "gflg_conv"))
+            labels["KDE"].extend(getattr(b, "gflg_kde"))
+            l = len(getattr(b, "slist"))
+            for p in v_params:
+                _u[p].extend(getattr(b, p))
+            for p in s_params:
+                _u[p].extend([getattr(b, p)]*l)
+        for name in ["CONV","KDE"]:
+            self.skills[name] = Skills(pd.DataFrame.from_records(_u).values, np.array(labels[name]), name)
         return
 
 

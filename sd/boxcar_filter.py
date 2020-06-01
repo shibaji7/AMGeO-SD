@@ -38,7 +38,7 @@ def create_gaussian_weights(mu, sigma, _kernel=3, base_w=5):
 class Filter(object):
     """Class to filter data - Boxcar median filter."""
 
-    def __init__(self, thresh=.7, w=None, pbnd=[1./5., 4./5.], pth=0.5, kde_plot_point=(6,20)):
+    def __init__(self, thresh=.7, w=None, pbnd=[1./5., 4./5.], pth=0.25, kde_plot_point=(6,20)):
         """
         initialize variables
 
@@ -75,21 +75,25 @@ class Filter(object):
         return oscan
 
 
-    def doFilter(self, i_scans, comb=False, plot_kde=False):
+    def doFilter(self, i_scans, comb=False, plot_kde=False, gflg_type=-1):
         """
         Median filter based on the weight given by matrix (3X3X3) w, and threshold based on thresh
     
         i_scans: 3 consecutive radar scans
         comb: combine beams
+        plot_kde: plot KDE estimate for the range cell if true
+        gflg_type: Type of gflag used in this study [-1, 0, 1, 2] -1 is default other numbers are listed in
+                    Evan's presentation.
         """
         if comb: 
             scans = []
             for s in i_scans:
                 scans.append(self._discard_repeting_beams(s))
         else: scans = i_scans
-        self.c_scans = scans
+
+        self.scans = scans
         w, pbnd, pth, kde_plot_point = self.w, self.pbnd, self.pth, self.kde_plot_point
-        oscan = Scan(scan.stime, scan.etime, scan.stype)
+        oscan = Scan(scans[1].stime, scans[1].etime, scans[1].stype)
         if w is None: w = np.array([[[1,2,1],[2,3,2],[1,2,1]],
                                 [[2,3,2],[3,5,3],[2,3,2]],
                                 [[1,2,1],[2,3,2],[1,2,1]]])
@@ -100,8 +104,8 @@ class Filter(object):
             beam = Beam()
             beam.copy(b)
     
-            for key, val in beam.__dict__.iteritems():
-                setattr(beam, key, [])
+            for key in beam.__dict__.keys():
+                if type(getattr(beam, key)) == np.ndarray: setattr(beam, key, [])
 
             setattr(beam, "v_mad", [])
             setattr(beam, "gflg_conv", [])
@@ -125,12 +129,12 @@ class Filter(object):
                             if tbm == None: continue
                             # check if target gate number is in the beam
                             if r+n in tbm.slist:
-                                ind = tbm.slist.index(r + n)
-                                box[j][k+1][n+1] = Gate(tbm, ind)
+                                ind = tbm.slist.tolist().index(r + n)
+                                box[j][k+1][n+1] = Gate(tbm, ind, gflg_type=gflg_type)
                             else: box[j][k+1][n+1] = 0
                 pts = 0.0
                 tot = 0.0
-                v,w_l,p_l,pwr0,gfx = list(), list(), list(), list(), list()
+                v,w_l,p_l,gfx = list(), list(), list(), list()
         
                 for j in range(0,3):# iterate through time
                     for k in range(0,3):# iterate through beam
@@ -143,17 +147,15 @@ class Filter(object):
                                 pts += wt
                                 for m in range(0, wt):
                                     v.append(bx.v)
-                                    pwr0.append(bx.pwr0)
                                     w_l.append(bx.w_l)
                                     p_l.append(bx.p_l)
                                     gfx.append(bx.gflg)
     
-                if pts / tot >= thresh:# check if we meet the threshold
+                if pts / tot >= self.thresh:# check if we meet the threshold
                     beam.slist.append(r)
                     beam.v.append(np.median(v))
                     beam.w_l.append(np.median(w_l))
                     beam.p_l.append(np.median(p_l))
-                    beam.pwr0.append(np.median(pwr0))
                     beam.v_mad.append(np.median(np.abs(np.array(v)-np.median(v))))
                     
                     # Re-evaluate the groundscatter flag using old method
@@ -164,7 +166,7 @@ class Filter(object):
                     gflg = np.nansum(gfx) / tot
                     if np.nansum(gfx) / tot <= pbnd[0]: gflg=0.
                     elif np.nansum(gfx) / tot >= pbnd[1]: gflg=1.
-                    else: gflg=-1.
+                    else: gflg=2.
                     beam.gflg_conv.append(gflg)
     
                     # KDE estimation using scipy Beta(a, b, loc=0, scale=1)
@@ -173,15 +175,17 @@ class Filter(object):
                     a, b, loc, scale = beta.fit(_gfx, floc=0., fscale=1.)
                     if kde_plot_point is not None:
                         if (kde_plot_point[0] == bmnum) and (kde_plot_point[1] == r):
-                            plot_kde_distribution(a, b, loc, scale, pth, pbnd)
+                            #if plot_kde: plot_kde_distribution(a, b, loc, scale, pth, pbnd)
+                            pass
                     gflg = 1 - beta.cdf(pth, a, b, loc=0., scale=1.)
                     if gflg <= pbnd[0]: gflg=0.
                     elif gflg >= pbnd[1]: gflg=1.
-                    else: gflg=-1.
+                    else: gflg=2.
                     beam.gflg_kde.append(gflg)
-            oscan.append(beam)
+            oscan.beams.append(beam)
     
         oscan.update_time()
+        oscan. _estimat_skills()
         sorted(oscan.beams, key=lambda bm: bm.bmnum)
         return oscan
 
