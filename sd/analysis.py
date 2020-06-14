@@ -38,7 +38,7 @@ class Simulate(object):
                 - dofilter: method for running the filter
                 - make_movie: create movie
                 - skills: estimate skills
-                - save: save to hdf files
+                - save: save to hdf and netcdf files
                 - clear: clear the storage folder
         """
         self.rad = rad
@@ -55,6 +55,7 @@ class Simulate(object):
         if hasattr(self, "inv_plot") and self.inv_plot: self._invst_plots()
         if hasattr(self, "make_movie") and self.make_movie: self._make_movie()
         if hasattr(self, "skills") and self.skills: self._estimate_skills()
+        if hasattr(self, "save") and self.save: self._to_files()
         return
 
     def _clear(self):
@@ -83,14 +84,13 @@ class Simulate(object):
                     _u[p].extend([getattr(b, p)]*l)
         for name in ["CONV","KDE"]:
             self.skills[name] = Skills(pd.DataFrame.from_records(_u).values, np.array(labels[name]), name, verbose=True)
-        if hasattr(self, "save") and self.save: self._to_hdf5()
         return
 
-    def _to_hdf5(self):
+    def _to_files(self):
         """
-        Save filterd value to .h5 file
+        Save filterd value to .nc and .h5 file
         """
-        s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang"]
+        s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time"]
         v_params=["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde"]
         fname = "data/outputs/{rad}/data.h5".format(rad=self.rad)
         _u = {key: [] for key in v_params + s_params}
@@ -102,6 +102,25 @@ class Simulate(object):
                 for p in s_params:
                     _u[p].extend([getattr(b, p)]*l)
         pd.DataFrame.from_records(_u).to_hdf(fname, key="df")
+
+        fname = "data/outputs/{rad}/data.nc".format(rad=self.rad)
+        from netCDF4 import Dataset
+        import time
+        rootgrp = Dataset(fname, "w", format="NETCDF4")
+        rootgrp.description = "Fitacf++ : Boxcar filtered data"
+        rootgrp.history = "Created " + time.ctime(time.time())
+        rootgrp.source = "AMGeO - SD data processing"
+        rootgrp.createDimension("scan", len(self.fscans))
+        rootgrp.createDimension("beam", len(self.fscans[0].beams))
+        rootgrp.createDimension("gate", 75)
+        scan = rootgrp.createVariable("scan","i1",("scan",))
+        beam = rootgrp.createVariable("beam","i1",("beam",))
+        gate = rootgrp.createVariable("gate","i1",("gate",))
+        scan[:], beam[:], gate[:] = range(len(self.fscans)), range(len(self.fscans[0].beams)), range(75)
+        s_params=["time"]
+        for k in s_params:
+            tmp = rootgrp.createVariable(k,"f",("scan",))
+        b_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang"]
         return
 
     def _dofilter(self):

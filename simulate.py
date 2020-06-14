@@ -22,9 +22,9 @@ from analysis import Simulate
 
 
 if __name__ == "__main__":
-    sim = Simulate("sas", [dt.datetime(2015,3,17,3), dt.datetime(2015,3,17,4)],
-            {"stype":"themis", "beam":6, "dur":2.}, inv_plot=False, dofilter=True, make_movie=True,
-            gflg_type=-1, skills=True, save=True, clear=True)
+    sim = Simulate("sas", [dt.datetime(2015,3,17,3), dt.datetime(2015,3,17,3,2)],
+            {"stype":"themis", "beam":6, "dur":2.}, inv_plot=False, dofilter=True, make_movie=False,
+            gflg_type=-1, skills=False, save=True, clear=True)
     import os
     os.system("rm *.log")
     os.system("rm -rf sd/__pycache__")
