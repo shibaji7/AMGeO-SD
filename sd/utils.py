@@ -81,7 +81,9 @@ class Skills(object):
         self.n_clusters = len(self.clusters)
         self.n_samples, _ = X.shape
         self.verbose = verbose
-        self._compute()
+        if self.n_clusters > 1: self._compute()
+        else: 
+            if verbose: print("\n No skills are estimated as only one class is detected")
         return
 
     def _compute(self):
@@ -94,10 +96,10 @@ class Skills(object):
         - Hartigan Score (hscore)
         - Xu Score (xuscore)
         """
-        self._errors()
         self.dbscore = davies_bouldin_score(self.X, self.labels)
         self.chscore = calinski_harabasz_score(self.X, self.labels)
         self.siscore = silhouette_score(self.X, self.labels)
+        self._errors()
         self.bhscore = self._ball_hall_score()
         self.hscore = self._hartigan_score()
         self.xuscore = self._xu_score()

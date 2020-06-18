@@ -38,7 +38,7 @@ def create_gaussian_weights(mu, sigma, _kernel=3, base_w=5):
 class Filter(object):
     """Class to filter data - Boxcar median filter."""
 
-    def __init__(self, thresh=.7, w=None, pbnd=[1./5., 4./5.], pth=0.25, kde_plot_point=(6,20)):
+    def __init__(self, thresh=.7, w=None, pbnd=[1./5., 4./5.], pth=0.25, kde_plot_point=(6,20), verbose=False):
         """
         initialize variables
 
@@ -56,6 +56,7 @@ class Filter(object):
         self.pbnd = pbnd
         self.pth = pth
         self.kde_plot_point = kde_plot_point
+        self.verbose = verbose
         return
 
     def _discard_repeting_beams(self, scan):
@@ -185,7 +186,7 @@ class Filter(object):
             oscan.beams.append(beam)
     
         oscan.update_time()
-        oscan. _estimat_skills()
+        oscan._estimat_skills(verbose=self.verbose)
         sorted(oscan.beams, key=lambda bm: bm.bmnum)
         return oscan
 

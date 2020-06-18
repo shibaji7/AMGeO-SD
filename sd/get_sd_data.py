@@ -124,7 +124,7 @@ class Scan(object):
         self.f, self.nsky = np.mean(f), np.mean(nsky)
         return
 
-    def _estimat_skills(self, v_params=["v", "w_l", "p_l", "slist"], s_params=["bmnum"]):
+    def _estimat_skills(self, v_params=["v", "w_l", "p_l", "slist"], s_params=["bmnum"], verbose=False):
         """
         Only used on the median filtered scan data.
         Estimate skills of the median filterd data
@@ -140,7 +140,7 @@ class Scan(object):
             for p in s_params:
                 _u[p].extend([getattr(b, p)]*l)
         for name in ["CONV","KDE"]:
-            self.skills[name] = Skills(pd.DataFrame.from_records(_u).values, np.array(labels[name]), name)
+            self.skills[name] = Skills(pd.DataFrame.from_records(_u).values, np.array(labels[name]), name, verbose=verbose)
         return
 
 
@@ -173,7 +173,7 @@ class FetchData(object):
         """
         if self.files is None: self.files = []
         reg_ex = "/sd-data/{year}/fitacf/{rad}/{date}.*.{rad}.fitacf.bz2"
-        days = (self.date_range[1] - self.date_range[0]).days + 1
+        days = (self.date_range[1] - self.date_range[0]).days + 2
         ent = -1
         for d in range(-1,days):
             e = self.date_range[0] + dt.timedelta(days=d)

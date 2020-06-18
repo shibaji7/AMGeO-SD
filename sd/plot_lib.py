@@ -178,7 +178,7 @@ class MasterPlotter(object):
 class InvestigativePlots(MasterPlotter):
     """Class that plots all the investigative figures"""
 
-    def __init__(self, figure_name, e, rad, data, keywords={}, folder="data/outputs"):
+    def __init__(self, figure_name, e, rad, sim_id, data, keywords={}, folder="data/outputs/{rad}/{sim_id}/"):
         """
         initialze all the parameters
         figure_name: Name of the investigation "1plot", "4plot", "5plot"
@@ -191,9 +191,11 @@ class InvestigativePlots(MasterPlotter):
         self.data = data
         self.rad = rad
         self.e = e
-        self.folder = folder
-        print("\n Create folder - mkdir {folder}/{rad}".format(folder=self.folder, rad=self.rad))
-        os.system("mkdir {folder}/{rad}".format(folder=self.folder, rad=self.rad))
+        self.sim_id = sim_id
+        self.folder = folder.format(rad=self.rad, sim_id=self.sim_id)
+        if not os.path.exists(self.folder): 
+            print("\n Create folder - mkdir {folder}".format(folder=self.folder))
+            os.system("mkdir -p {folder}".format(folder=self.folder))
         for p in keywords.keys():
             setattr(self, p, keywords[p])
         return
@@ -221,7 +223,7 @@ class InvestigativePlots(MasterPlotter):
             q = ax.quiver(X, Y, u.T, v.T)
             ax.quiverkey(q, 0.75, 0.98, 1000, r"$1000$ m/s", labelpos="S",
                     fontproperties={"size": font["size"], "weight": "bold"}, color="r", labelcolor="r")
-            fig.savefig("{folder}/{rad}/{date}.1plot.png".format(folder=self.folder,
+            fig.savefig("{folder}{date}.1plot.png".format(folder=self.folder,
                 rad=self.rad, date=self.e.strftime("%Y%m%d%H%M")),bbox_inches="tight")
         elif self.figure_name == "4plot":
             dur = int((self.data[1].stime-self.data[0].stime).seconds/60.)
@@ -244,7 +246,7 @@ class InvestigativePlots(MasterPlotter):
             self.set_size_legend(axes[1,0], mx, leg_keys=("30", "15", "5"), leg=self.set_point_legend(axes[1,0]), c=C)
             mx = self.draw_scatter(axes[1,1], self.data[1], label={"xx":0.75, "yy":1.05, "text":r"$width^{LoS}[m/s]$"}, zparam="w_l", c=C)
             self.set_size_legend(axes[1,1], mx, leg_keys=("200", "100", "10"), leg=self.set_point_legend(axes[1,1]), c=C)
-            fig.savefig("{folder}/{rad}/{date}.4plot.png".format(folder=self.folder,
+            fig.savefig("{folder}{date}.4plot.png".format(folder=self.folder,
                                 rad=self.rad, date=self.e.strftime("%Y%m%d%H%M")),bbox_inches="tight")
         elif self.figure_name == "5plot":
             dur = int((self.data[1].stime-self.data[0].stime).seconds/60.)
@@ -295,7 +297,7 @@ class InvestigativePlots(MasterPlotter):
                 fonttext["color"] = "blue"
             self.set_size_legend(ax, mx, leg_keys=("150", "75", "25"), leg=self.set_point_legend(ax, is_unknown=True), c=20)
             ax.set_yticklabels([])
-            fig.savefig("{folder}/{rad}/{date}.5plot.png".format(folder=self.folder,
+            fig.savefig("{folder}{date}.5plot.png".format(folder=self.folder,
                                 rad=self.rad, date=self.e.strftime("%Y%m%d%H%M")),bbox_inches="tight")
         return
 
@@ -303,7 +305,7 @@ class InvestigativePlots(MasterPlotter):
 class MovieMaker(MasterPlotter):
     """Class creates movie out of the images."""
 
-    def __init__(self, rad, dates, scans, figure_name, keywords={}, folder="data/outputs"):
+    def __init__(self, rad, dates, scans, figure_name, sim_id, keywords={}, folder="data/outputs/{rad}/{sim_id}"):
         """
         initialze all the parameters
         rad: Radar code
@@ -318,10 +320,11 @@ class MovieMaker(MasterPlotter):
         self.dates = dates
         self.scans = scans
         self.figure_name = figure_name
-        self.folder = folder
-        print("\n Create folder - mkdir {folder}/{rad}".format(folder=self.folder, rad=self.rad))
-        os.system("mkdir {folder}/{rad}".format(folder=self.folder, rad=self.rad))
-        self.folder = "{folder}/{rad}".format(folder=self.folder, rad=self.rad)
+        self.sim_id = sim_id
+        self.folder = folder.format(rad=self.rad, sim_id=self.sim_id)
+        if not os.path.exists(self.folder):
+            print("\n Create folder - mkdir {folder}".format(folder=self.folder))
+            os.system("mkdir -p {folder}".format(folder=self.folder))
         for p in keywords.keys():
             setattr(self, p, keywords[p])
         return
@@ -349,7 +352,7 @@ class MovieMaker(MasterPlotter):
             self.gflg_type, self.scan.f,self.scan.nsky), horizontalalignment="center", 
             verticalalignment="center", fontdict=fonttext, transform=ax.transAxes)
         fonttext["color"] = "blue"
-        fig.savefig("{folder}/raw_{id}.png".format(folder=self.folder, id="%04d"%self._ix), bbox_inches="tight")
+        fig.savefig("{folder}raw_{id}.png".format(folder=self.folder, id="%04d"%self._ix), bbox_inches="tight")
         plt.close()
         return
 
@@ -392,13 +395,13 @@ class MovieMaker(MasterPlotter):
                     horizontalalignment="center", verticalalignment="center",
                     transform=ax.transAxes, fontdict=fonttext, rotation=90)
         fonttext["color"] = "blue"
-        fig.savefig("{folder}/med_filt_{gs}_{id}.png".format(folder=self.folder, id="%04d"%self._ix, gs=self.gs), bbox_inches="tight")
+        fig.savefig("{folder}med_filt_{gs}_{id}.png".format(folder=self.folder, id="%04d"%self._ix, gs=self.gs), bbox_inches="tight")
         plt.close()
         return
 
     def _create_movie(self):
         if self.figure_name == "raw": files = glob.glob("{folder}/{reg}".format(folder=self.folder, reg=self.figure_name+"*.png"))
-        else: files = glob.glob("{folder}/{reg}".format(folder=self.folder, reg=self.figure_name+"_"+self.gs+"*.png"))
+        else: files = glob.glob("{folder}{reg}".format(folder=self.folder, reg=self.figure_name+"_"+self.gs+"*.png"))
         files.sort()
         for i, name in enumerate(files):
             nname = "_".join(name.split("_")[:-1] + ["{id}.png".format(id="%04d"%i)])
@@ -409,7 +412,7 @@ class MovieMaker(MasterPlotter):
         elif self.figure_name == "med_filt":
             reg = "med_filt_{gs}_%04d.png".format(gs=self.gs)
             fname = "{rad}_{figure_name}_{gs}.mp4".format(rad=self.rad, figure_name=self.figure_name, gs=self.gs)
-        cmd = "ffmpeg -r 1 -i {folder}/{reg} -c:v libx264 -vf 'scale=1420:-2,fps=3,format=yuv420p' {folder}/{fname}".format(reg=reg, fname=fname, folder=self.folder)
+        cmd = "ffmpeg -r 1 -i {folder}{reg} -c:v libx264 -vf 'scale=1420:-2,fps=3,format=yuv420p' {folder}/{fname}".format(reg=reg, fname=fname, folder=self.folder)
         print("\n Running movie making script - ", cmd)
         os.system(cmd)
         return
