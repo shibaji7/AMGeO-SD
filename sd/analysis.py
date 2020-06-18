@@ -15,6 +15,8 @@ import os
 import numpy as np
 import datetime as dt
 import pandas as pd
+from netCDF4 import Dataset, date2num
+import time
 
 from utils import Skills
 from get_sd_data import FetchData
@@ -92,12 +94,15 @@ class Simulate(object):
         """
         if not os.path.exists("data/outputs/{rad}/{sim_id}/".format(rad=self.rad, sim_id=self.sim_id)): 
             os.system("mkdir -p data/outputs/{rad}/{sim_id}/".format(rad=self.rad, sim_id=self.sim_id))
-        s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time"]
-        v_params=["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde"]
-        fname = "data/outputs/{rad}/{sim_id}/data.h5".format(rad=self.rad, sim_id=self.sim_id)
+        s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time", "intt.sc", "intt.us", "mppul"]
+        v_params=["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde", "v_mad"]
+        fname = "data/outputs/{rad}/{sim_id}/data_{s}_{e}.h5".format(rad=self.rad, sim_id=self.sim_id, 
+                s=self.date_range[0].strftime("%Y%m%d.%H%M"), e=self.date_range[1].strftime("%Y%m%d.%H%M"))
         _u = {key: [] for key in v_params + s_params}
         _du = {key: [] for key in v_params + s_params}
+        blen, glen = 0, 75
         for fscan in self.fscans:
+            blen += len(fscan.beams)
             for b in fscan.beams:
                 l = len(getattr(b, "slist"))
                 for p in v_params:
@@ -106,36 +111,42 @@ class Simulate(object):
                 for p in s_params:
                     _u[p].extend([getattr(b, p)]*l)
                     _du[p].append(getattr(b, p))
-        pd.DataFrame.from_records(_u).to_hdf(fname, key="df")
+        if hasattr(self, "hdf") and self.hdf: pd.DataFrame.from_records(_u).to_hdf(fname, key="df")
 
-        fname = "data/outputs/{rad}/{sim_id}/data.nc".format(rad=self.rad, sim_id=self.sim_id)
-        from netCDF4 import Dataset
-        import time
+        print("\n Shape of the beam dataset -",blen,glen)
+        fname = "data/outputs/{rad}/{sim_id}/data_{s}_{e}.nc".format(rad=self.rad, sim_id=self.sim_id,
+                s=self.date_range[0].strftime("%Y%m%d.%H%M"), e=self.date_range[1].strftime("%Y%m%d.%H%M"))
         rootgrp = Dataset(fname, "w", format="NETCDF4")
         rootgrp.description = """
                                  Fitacf++ : Boxcar filtered data.
                                  Filter parameter: weight matrix - default; threshold - {th}
                                  Parameters (Thresholds) - CONV(q=[{l},{u}]), KDE(p={pth},q=[{l},{u}])
                               """.format(th=self.thresh, l=self.pbnd[0], u=self.pbnd[1], pth=self.pth)
-        blen, glen = len(self.fscans)*len(self.fscans[0].beams), 75
         rootgrp.history = "Created " + time.ctime(time.time())
         rootgrp.source = "AMGeO - SD data processing"
-        rootgrp.createDimension("beam", blen)
-        rootgrp.createDimension("gate", glen)
-        beam = rootgrp.createVariable("beam","i1",("beam",))
-        gate = rootgrp.createVariable("gate","i1",("gate",))
+        rootgrp.createDimension("nbeam", blen)
+        rootgrp.createDimension("ngate", glen)
+        beam = rootgrp.createVariable("nbeam","i1",("nbeam",))
+        gate = rootgrp.createVariable("ngate","i1",("ngate",))
         beam[:], gate[:], = range(blen), range(glen) 
-        s_params, type_params, desc_params = ["bmnum","noise.sky", "tfreq", "scan", "nrang"], ["i1","f4","f4","i1","f4"],\
-                ["Beam numbers", "Sky Noise", "Frequency", "Scan Flag", "Max. Range Gate"]
+        times = rootgrp.createVariable("time", "f8", ("nbeam",))
+        times.units = "hours since 0001-01-01 00:00:00.0"
+        times.calendar = "gregorian"
+        times[:] = date2num(_du["time"],units=times.units,calendar=times.calendar)
+        s_params, type_params, desc_params = ["bmnum","noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us", "mppul"],\
+                ["i1","f4","f4","i1","f4","f4","f4","i1"],\
+                ["Beam numbers", "Sky Noise", "Frequency", "Scan Flag", "Max. Range Gate", "Integration sec", "Integration u.sec",
+                        "Number of pulses"]
         for _i, k in enumerate(s_params):
-            tmp = rootgrp.createVariable(k, type_params[_i],("beam",))
+            tmp = rootgrp.createVariable(k, type_params[_i],("nbeam",))
             tmp.description = desc_params[_i]
             tmp[:] = np.array(_du[k])
-        v_params, desc_params = ["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde"],\
-                ["LoS Velocity", "LoS Width", "GS Flag (%d)"%self.gflg_type, "LoS Power", "Gate", "GS Flag (Conv)", "GS Flag (KDE)"]
+        v_params, desc_params = ["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde", "v_mad"],\
+                ["LoS Velocity", "LoS Width", "GS Flag (%d)"%self.gflg_type, "LoS Power", "Gate", "GS Flag (Conv)", "GS Flag (KDE)",
+                        "MAD of LoS Velociy after filtering"]
         _g = _du["slist"]
         for _i, k in enumerate(v_params):
-            tmp = rootgrp.createVariable(k, "f4", ("beam", "gate"))
+            tmp = rootgrp.createVariable(k, "f4", ("nbeam", "ngate"))
             tmp.description = desc_params[_i]
             _m = np.empty((blen,glen))
             _m[:], x = np.nan, _du[k]
@@ -208,7 +219,8 @@ class Simulate(object):
         Create all dates to run filter simulation
         """
         self.dates = []
-        dates = (self.date_range[1] + dt.timedelta(minutes=self.scan_prop["dur"]) - self.date_range[0]).seconds / (self.scan_prop["dur"] * 60) 
+        dates = (self.date_range[1] + dt.timedelta(minutes=self.scan_prop["dur"]) - 
+                self.date_range[0]).total_seconds() / (self.scan_prop["dur"] * 60) 
         for d in range(int(dates)):
             self.dates.append(self.date_range[0] + dt.timedelta(minutes=d*self.scan_prop["dur"]))
         return

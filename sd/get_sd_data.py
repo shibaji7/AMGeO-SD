@@ -221,7 +221,7 @@ class FetchData(object):
             if self.verbose: print("\n Converted to scan data.")
         return _b, _s
 
-    def fetch_data(self, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang"],
+    def fetch_data(self, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us", "mppul"],
                         v_params=["pwr0", "v", "w_l", "gflg", "p_l", "slist", "v_e"],
                         by="beam", scan_prop={"dur": 1, "stype": "normal"}):
         """

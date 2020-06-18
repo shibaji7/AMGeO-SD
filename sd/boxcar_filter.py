@@ -130,7 +130,7 @@ class Filter(object):
                             if tbm == None: continue
                             # check if target gate number is in the beam
                             if r+n in tbm.slist:
-                                ind = tbm.slist.tolist().index(r + n)
+                                ind = np.array(tbm.slist).tolist().index(r + n)
                                 box[j][k+1][n+1] = Gate(tbm, ind, gflg_type=gflg_type)
                             else: box[j][k+1][n+1] = 0
                 pts = 0.0

@@ -3,11 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# image files
-*.png
-*.mp4
-*.h5
-*.nc
+# output files
+data/outputs/
 
 # C extensions
 *.so
