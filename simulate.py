@@ -19,7 +19,7 @@ import sys
 sys.path.append("sd/")
 import datetime as dt
 import argparse
-from analysis import Simulate
+from analysis import Simulate, Process2Movie
 import dateutil
 
 
@@ -58,6 +58,7 @@ if __name__ == "__main__":
             make_movie=args.movie, gflg_type=args.gflg_type, skills=args.skills, save=args.save, clear=args.clear, 
             thresh=args.thresh, pth=args.pth, pbnd=[args.lth, args.uth], verbose=args.verbose, sim_id=args.sim_id)
     elif args.program == 1:
+        proc = Process2Movie(args.rad, [args.start, args.end], args.sim_id, {"stype":stype, "beam":args.themis, "dur":args.dur})
         print("\n TODO\n")
     else: print("\n Invalid option, try 'python simulate.py -h'\n")
     import os

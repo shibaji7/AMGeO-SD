@@ -28,6 +28,7 @@ def geolocate_radar_fov(rad):
     s = r.sites[0]
     f = fov(site=s)
     blen, glen = len(f.beams), len(f.gates)
+    print(glen)
     glat, glon = np.zeros((blen, glen)), np.zeros((blen, glen))
     for i,b in enumerate(f.beams):
         for j,g in enumerate(f.gates):

@@ -11,6 +11,8 @@ __maintainer__ = "Chakraborty, S."
 __email__ = "shibaji7@vt.edu"
 __status__ = "Research"
 
+import os
+import netCDF4
 import numpy as np
 import pandas as pd
 from sklearn.metrics import davies_bouldin_score, calinski_harabasz_score, silhouette_score
@@ -150,3 +152,15 @@ class Skills(object):
        """
        n_clusters = len(set(self.labels))
        return np.log(n_clusters) + self.X.shape[1] * np.log2(np.sqrt(self.sse/(self.X.shape[1]*self.X.shape[0]**2)))
+
+def get_geolocate_range_cells(rad):
+    """
+    Fetch geolocate range cells
+    rad: Radar code
+    """
+    fname = "data/sim/{rad}.geolocate.data.nc".format(rad=rad)
+    gzfname = "data/sim/{rad}.geolocate.data.nc.gz".format(rad=rad)
+    os.system("gzip -d " + gzfname)
+    rootgrp = netCDF4.Dataset(fname)
+    os.system("gzip " + fname)
+    return rootgrp

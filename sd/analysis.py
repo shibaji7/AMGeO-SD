@@ -15,11 +15,13 @@ import os
 import numpy as np
 import datetime as dt
 import pandas as pd
-from netCDF4 import Dataset, date2num
+from netCDF4 import Dataset, date2num, num2date
 import time
+import glob
+import copy
 
 from utils import Skills
-from get_sd_data import FetchData
+from get_sd_data import FetchData, Beam, Scan
 from boxcar_filter import Filter
 from plot_lib import InvestigativePlots as IP, MovieMaker as MM
 
@@ -111,7 +113,9 @@ class Simulate(object):
                 for p in s_params:
                     _u[p].extend([getattr(b, p)]*l)
                     _du[p].append(getattr(b, p))
-        if hasattr(self, "hdf") and self.hdf: pd.DataFrame.from_records(_u).to_hdf(fname, key="df")
+        if hasattr(self, "hdf") and self.hdf:
+            pd.DataFrame.from_records(_u).to_hdf(fname, key="df")
+            os.system("gzip " + fname)
 
         print("\n Shape of the beam dataset -",blen,glen)
         fname = "data/outputs/{rad}/{sim_id}/data_{s}_{e}.nc".format(rad=self.rad, sim_id=self.sim_id,
@@ -119,19 +123,20 @@ class Simulate(object):
         rootgrp = Dataset(fname, "w", format="NETCDF4")
         rootgrp.description = """
                                  Fitacf++ : Boxcar filtered data.
-                                 Filter parameter: weight matrix - default; threshold - {th}
+                                 Filter parameter: weight matrix - default; threshold - {th}; GS Flag Type - {gflg_type}
                                  Parameters (Thresholds) - CONV(q=[{l},{u}]), KDE(p={pth},q=[{l},{u}])
-                              """.format(th=self.thresh, l=self.pbnd[0], u=self.pbnd[1], pth=self.pth)
+                                 (thresh:{th},pbnd:{l}-{u},pth:{pth},gflg_type:{gflg_type})
+                              """.format(th=self.thresh, gflg_type=self.gflg_type, l=self.pbnd[0], u=self.pbnd[1], pth=self.pth)
         rootgrp.history = "Created " + time.ctime(time.time())
         rootgrp.source = "AMGeO - SD data processing"
         rootgrp.createDimension("nbeam", blen)
         rootgrp.createDimension("ngate", glen)
         beam = rootgrp.createVariable("nbeam","i1",("nbeam",))
         gate = rootgrp.createVariable("ngate","i1",("ngate",))
-        beam[:], gate[:], = range(blen), range(glen) 
+        beam[:], gate[:] = range(blen), range(glen)
         times = rootgrp.createVariable("time", "f8", ("nbeam",))
-        times.units = "hours since 0001-01-01 00:00:00.0"
-        times.calendar = "gregorian"
+        times.units = "hours since 1970-01-01 00:00:00.0"
+        times.calendar = "julian"
         times[:] = date2num(_du["time"],units=times.units,calendar=times.calendar)
         s_params, type_params, desc_params = ["bmnum","noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us", "mppul"],\
                 ["i1","f4","f4","i1","f4","f4","f4","i1"],\
@@ -153,6 +158,45 @@ class Simulate(object):
             for _j in range(blen):
                 _m[_j,_g[_j]] = np.array(x[_j])
             tmp[:] = _m
+
+        v_params, desc_params = ["v", "w_l", "gflg", "p_l", "v_e", "slist"],\
+                ["LoS Velocity (Fitacf)", "LoS Width (Fitacf)", "GS Flag (%d) (Fitacf)"%self.gflg_type, 
+                        "LoS Power (Fitacf)", "LoS Velocity Error", "Gate (Fitacf)"]
+        s_params, type_params, desc_params = ["time", "bmnum","noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us", "mppul"],\
+                ["i1","f4","f4","i1","f4","f4","f4","i1"],\
+                ["Beam numbers", "Sky Noise", "Frequency", "Scan Flag", "Max. Range Gate", "Integration sec", "Integration u.sec",                                       "Number of pulses"]
+        fblen = 0
+        _ru = {key: [] for key in v_params+s_params}
+        for rscan in self.scans:
+            fblen += len(rscan.beams)
+            for b in rscan.beams:
+                for p in v_params:
+                    _ru[p].append(getattr(b, p))
+                for p in s_params:
+                    _ru[p].append(getattr(b, p))
+        print("\n Shape of the beam dataset -",fblen,glen)
+        s_params = ["bmnum","noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us", "mppul"]
+        rootgrp.createDimension("fitacf_nbeam", fblen)
+        fitacf_nbeam = rootgrp.createVariable("fitacf_nbeam","i1",("fitacf_nbeam",))
+        fitacf_nbeam[:] = range(fblen)
+        for _i, k in enumerate(s_params):
+            tmp = rootgrp.createVariable("fitacf_" + k, type_params[_i],("fitacf_nbeam",))
+            tmp.description = desc_params[_i]
+            tmp[:] = np.array(_ru[k])
+        times = rootgrp.createVariable("fitacf_time", "f8", ("fitacf_nbeam",))
+        times.units = "hours since 1970-01-01 00:00:00.0"
+        times.calendar = "julian"
+        times[:] = date2num(_ru["time"],units=times.units,calendar=times.calendar)
+        _g = _ru["slist"]
+        for _i, k in enumerate(v_params):
+            tmp = rootgrp.createVariable("fitacf_"+k, "f4", ("fitacf_nbeam", "ngate"))
+            tmp.description = desc_params[_i]
+            _m = np.empty((fblen,glen))
+            _m[:], x = np.nan, _ru[k]
+            for _j in range(fblen):
+                _m[_j,_g[_j]] = np.array(x[_j])
+            tmp[:] = _m
+        os.system("gzip " + fname)
         return
 
     def _dofilter(self):
@@ -177,8 +221,8 @@ class Simulate(object):
         if hasattr(self, "dofilter") and self.dofilter:
             _m.figure_name = "med_filt"
             _m.scans = self.fscans
-            _m.exe({"thresh":0.7, "gs":"gflg_conv", "pth":0.25, "pbnd":[0.2, 0.8], "zparam":"p_l"})
-            _m.exe({"thresh":0.7, "gs":"gflg_kde", "pth":0.25, "pbnd":[0.2, 0.8], "zparam":"p_l"})
+            _m.exe({"thresh":self.thresh, "gs":"gflg_conv", "pth":self.pth, "pbnd":self.pbnd, "zparam":"p_l"})
+            _m.exe({"thresh":self.thresh, "gs":"gflg_kde", "pth":self.pth, "pbnd":self.pbnd, "zparam":"p_l"})
         return
 
     def _invst_plots(self):
@@ -192,7 +236,7 @@ class Simulate(object):
         for i, e in enumerate(self.dates):
             scans = self.scans[i:i+3]
             if hasattr(self, "dofilter") and self.dofilter: scans.append(self.fscans[i])
-            ip = IP("1plot", e, self.rad, self.sim_id, scans, {"thresh":0.7, "gs":"gflg_conv", "pth":0.5, "pbnd":[0.2, 0.8], 
+            ip = IP("1plot", e, self.rad, self.sim_id, scans, {"thresh":self.thresh, "gs":"gflg_conv", "pth":self.pth, "pbnd":self.pbnd, 
                 "gflg_type": self.gflg_type})
             ip.draw()
             ip.draw("4plot")
@@ -223,6 +267,160 @@ class Simulate(object):
                 self.date_range[0]).total_seconds() / (self.scan_prop["dur"] * 60) 
         for d in range(int(dates)):
             self.dates.append(self.date_range[0] + dt.timedelta(minutes=d*self.scan_prop["dur"]))
+        return
+
+class Process2Movie(object):
+    """Class to fetch processed oata and create movies"""
+    
+    def __init__(self, rad, date_range, sim_id, scan_prop, verbose=True):
+        """
+        initialize all variables
+        rad: radar code
+        date_range: range of datetime [stime, etime]
+        verbose: print all sys logs
+        sim_id: simulation id
+        """
+        self.rad = rad
+        self.date_range = date_range
+        self.verbose = verbose
+        self.scan_prop = scan_prop
+        self.sim_id = sim_id
+        self._fetch_data()
+        self._create_dates()
+        self._to_scans()
+        self._invst_plots()
+        self._make_movie()
+        return
+
+    def _create_dates(self):
+        """
+        Create all dates to run plotting method
+        """
+        self.drange = [self.date_range[0] - dt.timedelta(minutes=self.scan_prop["dur"]),
+                self.date_range[1] + dt.timedelta(minutes=self.scan_prop["dur"])]
+        self.dates = []
+        dates = (self.date_range[1] + dt.timedelta(minutes=self.scan_prop["dur"]) -
+                self.date_range[0]).total_seconds() / (self.scan_prop["dur"] * 60)
+        for d in range(int(dates)):
+            self.dates.append(self.date_range[0] + dt.timedelta(minutes=d*self.scan_prop["dur"]))
+        return
+
+    def _ext_params(self, params):
+        """
+        Extract parameters from the list
+        """
+        for p in params:
+            k, v = p.split(":")[0].replace(" ",""), p.split(":")[1]
+            if k == "thresh": setattr(self, k, float(v))
+            if k == "pth": setattr(self, k, float(v))
+            if k == "gflg_type": setattr(self, k, int(v))
+            if k == "pbnd":
+                x = v.split("-")
+                setattr(self, k, [float(x[0]), float(x[1])])
+        return
+
+    def _get_nc_obj(self, s_params, v_params, pref):
+        """
+        Method that takes a beam sounding and convert to obj
+        """
+        d = dict(zip(s_params+v_params, ([] for _ in s_params+v_params)))
+        d["time"] = []
+        s_params = copy.copy(s_params)
+        s_params.remove("time")
+        for _o in self.datastore:
+            params = _o.description.split("\n")[-2].replace("(", "").replace(")", "").split(",")
+            self._ext_params(params)
+            times = num2date(_o.variables[pref+"time"][:], _o.variables[pref+"time"].units, _o.variables[pref+"time"].calendar,
+                    only_use_cftime_datetimes=False)
+            times = np.array([x._to_real_datetime() for x in times]).astype("datetime64[ns]")
+            times = [dt.datetime.utcfromtimestamp(x.astype(int) * 1e-9) for x in times]
+            d["time"].extend(times)
+            for x in s_params:
+                d[x].extend(_o.variables[pref+x][:])
+            for x in v_params:
+                d[x].append(_o.variables[pref+x][:].tolist())
+        for x in s_params:
+            d[x] = np.array(d[x])
+        for x in v_params:
+            u = d[x][0]
+            for i in range(1,len(d[x])):
+                u = np.append(u, d[x][i], axis=0)
+            d[x] = u
+        return d
+
+    def _to_scans(self):
+        """
+        Convert to scans and filter scan
+        """
+        gscans = []
+        prefxs = ["fitacf_", ""]
+        vparams = [["v", "w_l", "gflg", "p_l", "v_e"], ["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde", "v_mad"]]
+        s_params = ["time", "bmnum","noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us", "mppul"]
+        for pref, v_params in zip(prefxs, vparams):
+            _b, _s = [], []
+            d = self._get_nc_obj(s_params, v_params, pref)
+            for i, time in enumerate(d["time"]):
+                bm = Beam()
+                bm.set_nc(time, d, i, s_params, v_params)
+                _b.append(bm)
+            scan, sc =  0, Scan(None, None, self.scan_prop["stype"])
+            sc.beams.append(_b[0])
+            for dx in _b[1:]:
+                if dx.scan == 1:
+                    sc.update_time()
+                    _s.append(sc)
+                    sc = Scan(None, None, self.scan_prop["stype"])
+                    sc.beams.append(dx)
+                else: sc.beams.append(dx)
+            sc.update_time()
+            _s.append(sc)
+            gscans.append(_s)
+        self.scans, self.fscans = gscans[0], gscans[1]
+        return
+
+    def _fetch_data(self):
+        """
+        Fetch the data inside the folder
+        """
+        gzfn = "data/outputs/{rad}/{sim_id}/*.nc.gz".format(rad=self.rad, sim_id=self.sim_id)
+        gzfns = glob.glob(gzfn)
+        gzfns.sort()
+        self.datastore = []
+        for gf in gzfns:
+            os.system("gzip -d " + gf)
+            self.datastore.append(Dataset(gf.replace(".gz","")))
+            os.system("gzip " + gf.replace(".gz",""))
+        return
+
+    def _invst_plots(self):
+        """
+        Method for investigative plots -
+        1. Plot 1 X 1 panel plots
+        2. Plot 2 X 2 panel plots
+        3. Plot 3 - 2 filter analysis plots
+        """
+        if self.verbose: print("\n Slow method to plot 3 different types of investigative plots.")
+        for i, e in enumerate(self.dates):
+            scans = self.scans[i:i+3]
+            scans.append(self.fscans[i])
+            ip = IP("1plot", e, self.rad, self.sim_id, scans, {"thresh":self.thresh, "gs":"gflg_conv", "pth":self.pth, "pbnd":self.pbnd,
+                "gflg_type": self.gflg_type})
+            ip.draw()
+            ip.draw("4plot")
+            ip.draw("5plot")
+        return
+
+    def _make_movie(self):
+        """
+        Make movies out of the plots
+        """
+        if self.verbose: print("\n Very slow method to plot and create movies.")
+        _m = MM(self.rad, self.dates, self.scans, "raw", sim_id=self.sim_id)
+        _m.exe({"gflg_type":self.gflg_type})
+        _m.figure_name = "med_filt"
+        _m.scans = self.fscans
+        _m.exe({"thresh":self.thresh, "gs":"gflg_conv", "pth":self.pth, "pbnd":self.pbnd, "zparam":"p_l"})
+        _m.exe({"thresh":self.thresh, "gs":"gflg_kde", "pth":self.pth, "pbnd":self.pbnd, "zparam":"p_l"})
         return
 
 

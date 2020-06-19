@@ -64,6 +64,26 @@ class Beam(object):
         self.gs_estimation()
         return
 
+    def set_nc(self, time, d, i, s_params, v_params):
+        """
+        Set all parameters
+        time: datetime of beam
+        d: data dict for other parameters
+        s_param: other scalar params
+        v_params: other list params
+        """
+        self.time = time
+        for p in s_params:
+            if p in d.keys(): setattr(self, p, d[p][i])
+            else: setattr(self, p, None)
+        for p in v_params:
+            if p in d.keys(): 
+                setattr(self, p, np.array(d[p])[i,:])
+                if "slist" not in v_params and p=="v": setattr(self, "slist", np.argwhere(~np.isnan(getattr(self, "v"))))
+                setattr(self, p, getattr(self, p)[~np.isnan(getattr(self, p))])
+            else: setattr(self, p, [])
+        return
+
     def copy(self, bm):
         """
         Copy all parameters
@@ -218,6 +238,7 @@ class FetchData(object):
                     sc = Scan(None, None, scan_prop["stype"])
                     sc.beams.append(d)
                 else: sc.beams.append(d)
+            _s.append(sc)
             if self.verbose: print("\n Converted to scan data.")
         return _b, _s
 
