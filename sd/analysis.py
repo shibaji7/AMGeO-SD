@@ -196,6 +196,7 @@ class Simulate(object):
             for _j in range(fblen):
                 _m[_j,_g[_j]] = np.array(x[_j])
             tmp[:] = _m
+        rootgrp.close()
         os.system("gzip " + fname)
         return
 

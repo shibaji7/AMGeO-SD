@@ -17,8 +17,12 @@ import datetime as dt
 import glob
 import bz2
 import pydarn
+import configparser
 
 from utils import Skills
+
+config = configparser.ConfigParser()
+config.read("conf.properties")
 
 class Gate(object):
     """Class object to hold each range cell value"""
@@ -192,7 +196,8 @@ class FetchData(object):
         Create file names from date and radar code
         """
         if self.files is None: self.files = []
-        reg_ex = "/sd-data/{year}/fitacf/{rad}/{date}.*.{rad}.fitacf.bz2"
+        reg_ex = config.get("amgeo.sdloc","reg_ex")
+        #reg_ex = "/sd-data/{year}/fitacf/{rad}/{date}.*.{rad}.fitacf.bz2"
         days = (self.date_range[1] - self.date_range[0]).days + 2
         ent = -1
         for d in range(-1,days):

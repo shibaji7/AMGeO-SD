@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""simulate.py: module is dedicated to simulate days of data and store the data."""
+"""job.py: module is dedicated to simulate large chuck of data <6>-hr and store the data."""
 
 __author__ = "Chakraborty, S."
 __copyright__ = "Copyright 2020, SuperDARN@VT"
@@ -15,6 +15,7 @@ import numpy as np
 
 np.random.seed(0)
 
+import os
 import sys
 sys.path.append("sd/")
 import datetime as dt
@@ -27,9 +28,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-pro", "--program", type=int, default=0, help="Run program based on nmber (0-simulate, 1-fetch and plot data)")
     parser.add_argument("-r", "--rad", default="sas", help="SuperDARN radar code (default sas)")
-    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,17,3), help="Start date (default 2015-03-17T03)", 
+    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,17), help="Start date (default 2015-03-17)", 
             type=dateutil.parser.isoparse)
-    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,17,3,2), help="End date (default 2015-03-17T03:02)", 
+    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,18), help="End date (default 2015-03-18)", 
             type=dateutil.parser.isoparse)
     parser.add_argument("-d", "--dur", type=int, default=2, help="Scan duration in mins (default 2)")
     parser.add_argument("-t", "--themis", type=int, default=6, help="Themis beam number (default 6)")
@@ -47,20 +48,27 @@ if __name__ == "__main__":
     parser.add_argument("-uth", "--uth", type=float, default=.8, help="Probability cut-off for GS (default 0.8)")
     parser.add_argument("-sid", "--sim_id", default="L100", help="Simulation ID, need to store data into this folder (default L100)")
     args = parser.parse_args()
-    if args.verbose:
-        print("\n Parameter list for simulation ")
-        for k in vars(args).keys():
-            print("     ", k, "->", vars(args)[k])
-    stype = "themis" if args.themis>0 else None
-    if args.program == 0:
-        sim = Simulate(args.rad, [args.start, args.end],
-            {"stype":stype, "beam":args.themis, "dur":args.dur}, inv_plot=args.inv_plot, dofilter=args.dofilter, 
-            make_movie=args.movie, gflg_type=args.gflg_type, skills=args.skills, save=args.save, clear=args.clear, 
-            thresh=args.thresh, pth=args.pth, pbnd=[args.lth, args.uth], verbose=args.verbose, sim_id=args.sim_id)
-    elif args.program == 1:
-        proc = Process2Movie(args.rad, [args.start, args.end], args.sim_id, {"stype":stype, "beam":args.themis, "dur":args.dur})
-        print("\n TODO\n")
-    else: print("\n Invalid option, try 'python simulate.py -h'\n")
-    import os
-    os.system("rm *.log")
+
+    start = args.start
+    run = 1 
+    while start < args.end:
+        end = start + dt.timedelta(hours=6)
+        end = end if end < args.end else args.end
+        cmd = "python simulate.py -pro {pro} -r {r} -s {s} -e {e} -d {d} -t {t} -gft {gft} -th {th}"\
+                " -pth {pth} -lth {lth} -uth {uth} -sid {sid}".format(pro=args.program, r=args.rad, 
+                        s=start.strftime("%Y-%m-%dT%H:%M"), e=end.strftime("%Y-%m-%dT%H:%M"),
+                        d=args.dur, t=args.themis, gft=args.gflg_type, th=args.thresh, pth=args.pth,
+                        lth=args.lth, uth=args.uth, sid=args.sim_id)
+        if not args.dofilter: cmd = cmd + " -f" 
+        if args.movie: cmd = cmd + " -m" 
+        if args.skills: cmd = cmd + " -sk" 
+        if args.inv_plot: cmd = cmd + " -ip" 
+        if not args.save: cmd = cmd + " -sv" 
+        if args.clear and run==1: cmd = cmd + " -c" 
+        if args.verbose: cmd = cmd + " -v" 
+        print("\n ",cmd)
+        os.system(cmd)
+        start = end
+        run += 1
+    print("")
     os.system("rm -rf sd/__pycache__")
