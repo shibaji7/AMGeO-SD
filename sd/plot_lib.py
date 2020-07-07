@@ -305,7 +305,7 @@ class InvestigativePlots(MasterPlotter):
 class MovieMaker(MasterPlotter):
     """Class creates movie out of the images."""
 
-    def __init__(self, rad, dates, scans, figure_name, sim_id, keywords={}, folder="data/outputs/{rad}/{sim_id}"):
+    def __init__(self, rad, dates, scans, figure_name, sim_id, keywords={}, folder="data/outputs/{rad}/{sim_id}/"):
         """
         initialze all the parameters
         rad: Radar code

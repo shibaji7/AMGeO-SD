@@ -28,7 +28,6 @@ def geolocate_radar_fov(rad):
     s = r.sites[0]
     f = fov(site=s)
     blen, glen = len(f.beams), len(f.gates)
-    print(glen)
     glat, glon = np.zeros((blen, glen)), np.zeros((blen, glen))
     for i,b in enumerate(f.beams):
         for j,g in enumerate(f.gates):
@@ -46,11 +45,20 @@ def geolocate_radar_fov(rad):
     _glat = rootgrp.createVariable("lat","f4",("nbeam","ngate"))
     _glon = rootgrp.createVariable("lon","f4",("nbeam","ngate"))
     _glat[:], _glon[:] = glat, glon
+    rootgrp.close()
     os.system("gzip "+fname)
     return
 
 if __name__ == "__main__":
+    os.system("rm -rf data/sim/*")
     parser = argparse.ArgumentParser()
-    parser.add_argument("-r", "--rad", default="sas", help="SuperDARN radar code (default sas)")
+    parser.add_argument("-r", "--rad", default=None, help="SuperDARN radar code")
     args = parser.parse_args()
-    geolocate_radar_fov(args.rad)
+    if args.rad is not None: geolocate_radar_fov(args.rad)
+    else:
+        rads = ["ade", "adw", "bks", "cve", "cvw", "cly", "fhe", "fhw", "gbr", "han", "hok", "hkw", "inv",
+                "kap", "ksr", "kod", "lyr", "pyk", "pgr", "rkn", "sto", "wal", "bpk", "dce", "fir", "hal",
+                "ker", "mcm", "san", "sps", "sye", "sys", "tig", "unw", "zho"]
+        for rad in rads:
+            geolocate_radar_fov(rad)
+    print("")
