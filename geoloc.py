@@ -57,7 +57,7 @@ if __name__ == "__main__":
     if args.rad is not None: geolocate_radar_fov(args.rad)
     else:
         rads = ["ade", "adw", "bks", "cve", "cvw", "cly", "fhe", "fhw", "gbr", "han", "hok", "hkw", "inv",
-                "kap", "ksr", "kod", "lyr", "pyk", "pgr", "rkn", "sto", "wal", "bpk", "dce", "fir", "hal",
+                "kap", "ksr", "kod", "lyr", "pyk", "pgr", "rkn", "sas", "sto", "wal", "bpk", "dce", "fir", "hal",
                 "ker", "mcm", "san", "sps", "sye", "sys", "tig", "unw", "zho"]
         for rad in rads:
             geolocate_radar_fov(rad)
