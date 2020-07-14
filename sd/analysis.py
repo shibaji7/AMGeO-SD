@@ -147,7 +147,8 @@ class Simulate(object):
             tmp.description = desc_params[_i]
             tmp[:] = np.array(_du[k])
         v_params, desc_params = ["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde", "v_mad"],\
-                ["LoS Velocity", "LoS Width", "GS Flag (%d)"%self.gflg_type, "LoS Power", "Gate", "GS Flag (Conv)", "GS Flag (KDE)",
+                ["LoS Velocity (+ve: towards the radar, -ve: away from radar)", "LoS Width",
+                        "GS Flag (%d)"%self.gflg_type, "LoS Power", "Gate", "GS Flag (Conv)", "GS Flag (KDE)",
                         "MAD of LoS Velociy after filtering"]
         _g = _du["slist"]
         for _i, k in enumerate(v_params):
@@ -160,7 +161,8 @@ class Simulate(object):
             tmp[:] = _m
 
         v_params, desc_params = ["v", "w_l", "gflg", "p_l", "v_e", "slist"],\
-                ["LoS Velocity (Fitacf)", "LoS Width (Fitacf)", "GS Flag (%d) (Fitacf)"%self.gflg_type, 
+                ["LoS Velocity (Fitacf; +ve: towards the radar, -ve: away from radar)", "LoS Width (Fitacf)", 
+                        "GS Flag (%d) (Fitacf)"%self.gflg_type, 
                         "LoS Power (Fitacf)", "LoS Velocity Error", "Gate (Fitacf)"]
         s_params, type_params, desc_params = ["time", "bmnum","noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us", "mppul"],\
                 ["i1","f4","f4","i1","f4","f4","f4","i1"],\
