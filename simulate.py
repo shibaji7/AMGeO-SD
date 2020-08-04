@@ -19,9 +19,10 @@ import sys
 sys.path.append("sd/")
 import datetime as dt
 import argparse
-from analysis import Simulate, Process2Movie
 import dateutil
 
+import utils
+from analysis import Simulate, Process2Movie
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -46,17 +47,23 @@ if __name__ == "__main__":
     parser.add_argument("-lth", "--lth", type=float, default=.2, help="Probability cut-off for IS (default 0.2)")
     parser.add_argument("-uth", "--uth", type=float, default=.8, help="Probability cut-off for GS (default 0.8)")
     parser.add_argument("-sid", "--sim_id", default="L100", help="Simulation ID, need to store data into this folder (default L100)")
+    parser.add_argument("-pl_xu", "--plt_xulim", type=int, default=18, help="Upper X-lim of plotting (default 18)")
+    parser.add_argument("-pl_xl", "--plt_xllim", type=int, default=-2, help="Lower X-lim of plotting (default -2)")
+    parser.add_argument("-pl_yu", "--plt_yulim", type=int, default=70, help="Upper Y-lim of plotting (default 70)")
+    parser.add_argument("-pl_yl", "--plt_yllim", type=int, default=0, help="Lower Y-lim of plotting (default 0)")
     args = parser.parse_args()
     if args.verbose:
         print("\n Parameter list for simulation ")
         for k in vars(args).keys():
             print("     ", k, "->", vars(args)[k])
+    utils.save_cmd(sys.argv, "data/outputs/{rad}/{sim_id}/".format(rad=args.rad, sim_id=args.sim_id))
     stype = "themis" if args.themis>0 else None
     if args.program == 0:
         sim = Simulate(args.rad, [args.start, args.end],
             {"stype":stype, "beam":args.themis, "dur":args.dur}, inv_plot=args.inv_plot, dofilter=args.dofilter, 
             make_movie=args.movie, gflg_type=args.gflg_type, skills=args.skills, save=args.save, clear=args.clear, 
-            thresh=args.thresh, pth=args.pth, pbnd=[args.lth, args.uth], verbose=args.verbose, sim_id=args.sim_id)
+            thresh=args.thresh, pth=args.pth, pbnd=[args.lth, args.uth], verbose=args.verbose, sim_id=args.sim_id, 
+            plt_xulim=args.plt_xulim, plt_xllim=args.plt_xllim, plt_yulim=args.plt_yulim, plt_yllim=args.plt_yllim)
     elif args.program == 1:
         proc = Process2Movie(args.rad, [args.start, args.end], args.sim_id, {"stype":stype, "beam":args.themis, "dur":args.dur})
         print("\n TODO\n")

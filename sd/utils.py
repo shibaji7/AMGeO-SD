@@ -164,3 +164,9 @@ def get_geolocate_range_cells(rad):
     rootgrp = netCDF4.Dataset(fname)
     os.system("gzip " + fname)
     return rootgrp
+
+def save_cmd(args, f):
+    """ Save command to file """
+    cmd = "python " + " ".join(args)
+    with open(f + "script.cmd", "w") as o: o.write(cmd)
+    return

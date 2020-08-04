@@ -102,7 +102,7 @@ class Simulate(object):
                 s=self.date_range[0].strftime("%Y%m%d.%H%M"), e=self.date_range[1].strftime("%Y%m%d.%H%M"))
         _u = {key: [] for key in v_params + s_params}
         _du = {key: [] for key in v_params + s_params}
-        blen, glen = 0, 75
+        blen, glen = 0, 110
         for fscan in self.fscans:
             blen += len(fscan.beams)
             for b in fscan.beams:
@@ -219,7 +219,8 @@ class Simulate(object):
         Make movies out of the plots
         """
         if self.verbose: print("\n Very slow method to plot and create movies.")
-        _m = MM(self.rad, self.dates, self.scans, "raw", sim_id=self.sim_id)
+        _m = MM(self.rad, self.dates, self.scans, "raw", sim_id=self.sim_id, 
+                xlim=[self.plt_xllim, self.plt_xulim], ylim=[self.plt_yllim, self.plt_yulim])
         _m.exe({"gflg_type":self.gflg_type})
         if hasattr(self, "dofilter") and self.dofilter:
             _m.figure_name = "med_filt"
@@ -240,7 +241,7 @@ class Simulate(object):
             scans = self.scans[i:i+3]
             if hasattr(self, "dofilter") and self.dofilter: scans.append(self.fscans[i])
             ip = IP("1plot", e, self.rad, self.sim_id, scans, {"thresh":self.thresh, "gs":"gflg_conv", "pth":self.pth, "pbnd":self.pbnd, 
-                "gflg_type": self.gflg_type})
+                "gflg_type": self.gflg_type}, xlim=[self.plt_xllim, self.plt_xulim], ylim=[self.plt_yllim, self.plt_yulim])
             ip.draw()
             ip.draw("4plot")
             if hasattr(self, "dofilter") and self.dofilter: ip.draw("5plot")
@@ -407,7 +408,7 @@ class Process2Movie(object):
             scans = self.scans[i:i+3]
             scans.append(self.fscans[i])
             ip = IP("1plot", e, self.rad, self.sim_id, scans, {"thresh":self.thresh, "gs":"gflg_conv", "pth":self.pth, "pbnd":self.pbnd,
-                "gflg_type": self.gflg_type})
+                "gflg_type": self.gflg_type}, xlim=[self.plt_xllim, self.plt_xulim], ylim=[self.plt_yllim, self.plt_yulim])
             ip.draw()
             ip.draw("4plot")
             ip.draw("5plot")
@@ -418,7 +419,8 @@ class Process2Movie(object):
         Make movies out of the plots
         """
         if self.verbose: print("\n Very slow method to plot and create movies.")
-        _m = MM(self.rad, self.dates, self.scans, "raw", sim_id=self.sim_id)
+        _m = MM(self.rad, self.dates, self.scans, "raw", sim_id=self.sim_id, 
+                xlim=[self.plt_xllim, self.plt_xulim], ylim=[self.plt_yllim, self.plt_yulim])
         _m.exe({"gflg_type":self.gflg_type})
         _m.figure_name = "med_filt"
         _m.scans = self.fscans

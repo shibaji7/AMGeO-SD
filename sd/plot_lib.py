@@ -43,6 +43,11 @@ import utils
 class MasterPlotter(object):
     """Class for all the plotting"""
 
+    def __init__(self, ylim=[0,70], xlim=[-2,18]):
+        self.ylim = ylim
+        self.xlim = xlim
+        return
+
     def set_axes(self, ax):
         from matplotlib.ticker import (MultipleLocator, FormatStrFormatter, AutoMinorLocator)
         ax.xaxis.set_major_locator(MultipleLocator(4))
@@ -55,7 +60,7 @@ class MasterPlotter(object):
         ax.tick_params(which="minor", length=4)
         return ax
 
-    def set_point_legend(self, ax, ylim=[0,70], xlim=[-2,18],
+    def set_point_legend(self, ax,
             keys={"oc": {"size":5, "color":"k", "marker":"o", "facecolors":"None", "edgecolors":"k", "alpha":1., "lw":.1},
                 "cc": {"size":5, "color":"k", "marker":"o", "facecolors":"k", "edgecolors":"k", "alpha":0.5, "lw":.1},
                 "un": {"size":5, "color":"k", "marker":r"$\oslash$", "facecolors":"None", "edgecolors":"k", "alpha":1., "lw":.1}},
@@ -69,8 +74,8 @@ class MasterPlotter(object):
                     facecolors=keys["un"]["facecolors"], edgecolors=keys["un"]["edgecolors"], alpha=keys["un"]["alpha"], lw=keys["un"]["lw"])
             leg = ax.legend((oc,cc,un), leg_keys, scatterpoints=sp, loc=loc, ncol=ncol, fontsize=fontsize, frameon=frameon)
         else: leg = ax.legend((oc,cc), leg_keys, scatterpoints=sp, loc=loc, ncol=ncol, fontsize=fontsize, frameon=frameon)
-        ax.set_xlim(xlim[0], xlim[1])
-        ax.set_ylim(ylim[0], ylim[1])
+        ax.set_xlim(self.xlim[0], self.xlim[1])
+        ax.set_ylim(self.ylim[0], self.ylim[1])
         return leg
 
     def set_size_legend(self, ax, maxx, keys={"l0": {"color":"k", "marker":"o", "facecolors":"k", "edgecolors":"k", "alpha":.5, "lw":.1},
@@ -178,7 +183,8 @@ class MasterPlotter(object):
 class InvestigativePlots(MasterPlotter):
     """Class that plots all the investigative figures"""
 
-    def __init__(self, figure_name, e, rad, sim_id, data, keywords={}, folder="data/outputs/{rad}/{sim_id}/"):
+    def __init__(self, figure_name, e, rad, sim_id, data, keywords={}, folder="data/outputs/{rad}/{sim_id}/",
+            xlim=[-2,18], ylim=[0,70]):
         """
         initialze all the parameters
         figure_name: Name of the investigation "1plot", "4plot", "5plot"
@@ -187,6 +193,7 @@ class InvestigativePlots(MasterPlotter):
         data: SuperDARN radar scans. Data are in the following temporal order - [-1,0,+1,filt]
         **keywords: other keywords for drawing
         """
+        super().__init__(ylim, xlim)
         self.figure_name = figure_name
         self.data = data
         self.rad = rad
@@ -207,7 +214,7 @@ class InvestigativePlots(MasterPlotter):
         if figure_name is not None: self.figure_name = figure_name
         if self.figure_name == "1plot":
             C = 20
-            dur = int((self.data[1].stime-self.data[0].stime).seconds/60.)
+            dur = int((self.data[1].stime.replace(microsecond=0)-self.data[0].stime.replace(microsecond=0)).seconds/60.)
             fig, ax = plt.subplots(figsize=(6, 4), sharex="all", sharey="all", nrows=1, ncols=1, dpi=100)
             mx = self.draw_scatter(ax, self.data[1], label={"xx":0.75, "yy":1.05, "text":r"$power^{LoS}[dB]$"}, zparam="p_l", c=C)
             self.set_size_legend(ax, mx, leg_keys=("30", "15", "5"), leg=self.set_point_legend(ax), c=C)
@@ -226,7 +233,7 @@ class InvestigativePlots(MasterPlotter):
             fig.savefig("{folder}{date}.1plot.png".format(folder=self.folder,
                 rad=self.rad, date=self.e.strftime("%Y%m%d%H%M")),bbox_inches="tight")
         elif self.figure_name == "4plot":
-            dur = int((self.data[1].stime-self.data[0].stime).seconds/60.)
+            dur = int((self.data[1].stime.replace(microsecond=0)-self.data[0].stime.replace(microsecond=0)).seconds/60.)
             fig, axes = plt.subplots(figsize=(6, 6), sharex="all", sharey="all", nrows=2, ncols=2, dpi=100)
             fig.subplots_adjust(wspace=0.1,hspace=0.1)
             fig.text(0.5, 0.06, "Beams", ha="center",fontdict={"color":"blue"})
@@ -249,7 +256,7 @@ class InvestigativePlots(MasterPlotter):
             fig.savefig("{folder}{date}.4plot.png".format(folder=self.folder,
                                 rad=self.rad, date=self.e.strftime("%Y%m%d%H%M")),bbox_inches="tight")
         elif self.figure_name == "5plot":
-            dur = int((self.data[1].stime-self.data[0].stime).seconds/60.)
+            dur = int((self.data[1].stime.replace(microsecond=0)-self.data[0].stime.replace(microsecond=0)).seconds/60.)
             scan_times = [self.e - dt.timedelta(minutes=dur), self.e, self.e + dt.timedelta(minutes=dur)]
             fig = plt.figure(figsize=(8,5),dpi=180)
             fig.subplots_adjust(wspace=0.1,hspace=0.1)
@@ -305,7 +312,8 @@ class InvestigativePlots(MasterPlotter):
 class MovieMaker(MasterPlotter):
     """Class creates movie out of the images."""
 
-    def __init__(self, rad, dates, scans, figure_name, sim_id, keywords={}, folder="data/outputs/{rad}/{sim_id}/"):
+    def __init__(self, rad, dates, scans, figure_name, sim_id, keywords={}, folder="data/outputs/{rad}/{sim_id}/",
+            xlim=[-2,18], ylim=[0,70]):
         """
         initialze all the parameters
         rad: Radar code
@@ -316,6 +324,7 @@ class MovieMaker(MasterPlotter):
         data: SuperDARN radar scans. Data are in the following order - [-1,0,+1,filt]
         **keywords: other keywords for models
         """
+        super().__init__(ylim, xlim)
         self.rad = rad
         self.dates = dates
         self.scans = scans
