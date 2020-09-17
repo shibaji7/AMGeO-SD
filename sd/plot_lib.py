@@ -39,6 +39,7 @@ import glob
 import os
 import utils
 
+gs_map = {-1: "fitacf.def", 0: "Sundeen", 1: "Blanchard", 2: "Blanchard.2009", 3: "Chakraborty.2020"}
 
 class MasterPlotter(object):
     """Class for all the plotting"""
@@ -216,14 +217,13 @@ class InvestigativePlots(MasterPlotter):
             C = 20
             dur = int((self.data[1].stime.replace(microsecond=0)-self.data[0].stime.replace(microsecond=0)).seconds/60.)
             fig, ax = plt.subplots(figsize=(6, 4), sharex="all", sharey="all", nrows=1, ncols=1, dpi=100)
-            mx = self.draw_scatter(ax, self.data[1], label={"xx":0.75, "yy":1.05, "text":r"$power^{LoS}[dB]$"}, zparam="p_l", c=C)
+            mx = self.draw_scatter(ax, self.data[1], label={"xx":0.75, "yy":1.03, "text":r"$power^{LoS}[dB]$"}, zparam="p_l", c=C)
             self.set_size_legend(ax, mx, leg_keys=("30", "15", "5"), leg=self.set_point_legend(ax), c=C)
             fig.text(0.5, 0.01, "Beams", ha="center",fontdict={"color":"blue"})
             fig.text(0.06, 0.5, "Gates", va="center", rotation="vertical",fontdict={"color":"blue"})
-            ax.text(1.02,0.5,"Date=%s, Rad=%s, Scan Dur=%d"%(self.e.strftime("%Y-%m-%d %H:%M"),self.rad.upper(),dur),
-                    fontdict={"color":"blue","size":7}, ha="center", va="center", transform=ax.transAxes,
-                    rotation=90)
-            ax.text(0.2, 1.05, "GS Flag=%d"%(self.gflg_type), fontdict={"color":"blue","size":7}, 
+            fig.suptitle("Date=%s, Rad=%s, Scan Dur=%d min"%(self.e.strftime("%Y-%m-%d %H:%M"),self.rad.upper(),dur), size=12,
+                                        y=0.98, fontdict={"color":"darkblue"})
+            ax.text(0.2, 1.03, "GS Flag=%s"%(gs_map[self.gflg_type]), fontdict={"color":"blue","size":7}, 
                     ha="center", va="center", transform=ax.transAxes)
             X,Y,u = utils.get_gridded_parameters(utils.parse_parameter(self.data[1], p="v"),zparam="v")
             v = np.zeros_like(u)
@@ -238,12 +238,12 @@ class InvestigativePlots(MasterPlotter):
             fig.subplots_adjust(wspace=0.1,hspace=0.1)
             fig.text(0.5, 0.06, "Beams", ha="center",fontdict={"color":"blue"})
             fig.text(0.06, 0.5, "Gates", va="center", rotation="vertical",fontdict={"color":"blue"})
-            axes[0,1].text(1.05,0.5,"Date=%s, Rad=%s, \nScan Dur=%s"%(self.e.strftime("%Y-%m-%d %H:%M"),self.rad.upper(), dur),
-                    fontdict={"color":"blue","size":7}, ha="center", va="center",rotation="vertical", transform=axes[0,1].transAxes)
-            
+             
+            fig.suptitle("Date=%s, Rad=%s, Scan Dur=%d min"%(self.e.strftime("%Y-%m-%d %H:%M"),self.rad.upper(),dur), size=12,
+                                        y=0.94, fontdict={"color":"darkblue"})
             C = 30
             self.draw_quiver(axes[0,0], self.data[1], label={"xx":.9, "yy":1.05, "text":r"$v^{LoS}[m/s]$"}, zparam="v")
-            axes[0,0].text(0.2, 1.05, "GS Flag=%d"%(self.gflg_type), fontdict={"color":"blue","size":7},
+            axes[0,0].text(0.2, 1.05, "GS Flag=%s"%(gs_map[self.gflg_type]), fontdict={"color":"blue","size":7},
                                         ha="center", va="center", transform=axes[0,0].transAxes)
             self.set_point_legend(axes[0,0])
             mx = self.draw_scatter(axes[0,1], self.data[1], 
@@ -269,18 +269,18 @@ class InvestigativePlots(MasterPlotter):
             fonttext["size"] = 7
             
             ax = plt.subplot2grid(shape=(2,6), loc=(0,0), colspan=2)
-            self.draw_quiver(ax, self.data[0], label={"xx":0.75, "yy":0.1, "text":"UT=%s"%scan_times[0].strftime("%H:%M")}, cast="gflg")
+            self.draw_quiver(ax, self.data[0], label={"xx":0.2, "yy":1.05, "text":"UT=%s"%scan_times[0].strftime("%H:%M")}, cast="gflg")
             self.set_point_legend(ax)
             ax.set_xticklabels([])
             ax = plt.subplot2grid(shape=(2,6), loc=(0,2), colspan=2)
-            self.draw_quiver(ax, self.data[1], label={"xx":0.75, "yy":0.1, "text":"UT=%s"%scan_times[1].strftime("%H:%M")}, cast="gflg")
+            self.draw_quiver(ax, self.data[1], label={"xx":0.2, "yy":1.05, "text":"UT=%s"%scan_times[1].strftime("%H:%M")}, cast="gflg")
             self.set_point_legend(ax)
             ax.set_yticklabels([])
             ax.set_xticklabels([])
             ax = plt.subplot2grid(shape=(2,6), loc=(0,4), colspan=2)
-            self.draw_quiver(ax, self.data[2], label={"xx":0.75, "yy":0.1, "text":"UT=%s"%scan_times[2].strftime("%H:%M")}, cast="gflg")
+            self.draw_quiver(ax, self.data[2], label={"xx":0.2, "yy":1.05, "text":"UT=%s"%scan_times[2].strftime("%H:%M")}, cast="gflg")
             self.set_point_legend(ax)
-            ax.text(1.05, .5, "GS Flag=%d"%(self.gflg_type), fontdict={"color":"blue","size":7},
+            ax.text(1.05, .5, "GS Flag=%s"%(gs_map[self.gflg_type]), fontdict={"color":"blue","size":7},
                                         ha="center", va="center", transform=ax.transAxes, rotation=90)
             ax.set_yticklabels([])
             ax.set_xticklabels([])

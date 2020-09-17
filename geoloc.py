@@ -28,13 +28,15 @@ def geolocate_radar_fov(rad):
     s = r.sites[0]
     f = fov(site=s)
     blen, glen = len(f.beams), len(f.gates)
+    if glen >= 110: glen = 110
     glat, glon, azm = np.zeros((blen, glen)), np.zeros((blen, glen)), np.zeros((blen, glen))
     for i,b in enumerate(f.beams):
         for j,g in enumerate(f.gates):
-            glat[i,j], glon[i,j] = f.latCenter[b,g], f.lonCenter[b,g]
-            d = utils.geoPack.calcDistPnt(f.latFull[b,g], f.lonFull[b,g], 300,
-                    distLat=f.latFull[b, g + 1], distLon=f.lonFull[b, g + 1], distAlt=300)
-            azm[i,j] = d["az"]
+            if j < 110: 
+                glat[i,j], glon[i,j] = f.latCenter[b,g], f.lonCenter[b,g]
+                d = utils.geoPack.calcDistPnt(f.latFull[b,g], f.lonFull[b,g], 300,
+                        distLat=f.latFull[b, g + 1], distLon=f.lonFull[b, g + 1], distAlt=300)
+                azm[i,j] = d["az"]
     fname = "data/sim/{rad}.geolocate.data.nc".format(rad=rad)
     rootgrp = Dataset(fname, "w", format="NETCDF4")
     rootgrp.description = """ Fitacf++ : Geolocated points for each range cells. """
@@ -44,7 +46,7 @@ def geolocate_radar_fov(rad):
     rootgrp.createDimension("ngate", glen)
     beam = rootgrp.createVariable("beams","i1",("nbeam",))
     gate = rootgrp.createVariable("gates","i1",("ngate",))
-    beam[:], gate[:], = f.beams, f.gates
+    beam[:], gate[:], = f.beams, f.gates[:glen]
     _glat = rootgrp.createVariable("lat","f4",("nbeam","ngate"))
     _glon = rootgrp.createVariable("lon","f4",("nbeam","ngate"))
     _azm = rootgrp.createVariable("azm","f4",("nbeam","ngate"))

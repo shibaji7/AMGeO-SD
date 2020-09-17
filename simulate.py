@@ -51,12 +51,13 @@ if __name__ == "__main__":
     parser.add_argument("-pl_xl", "--plt_xllim", type=int, default=-2, help="Lower X-lim of plotting (default -2)")
     parser.add_argument("-pl_yu", "--plt_yulim", type=int, default=70, help="Upper Y-lim of plotting (default 70)")
     parser.add_argument("-pl_yl", "--plt_yllim", type=int, default=0, help="Lower Y-lim of plotting (default 0)")
+    parser.add_argument("-ms", "--min_sample", type=int, default=60, help="Minimum Sample for DBSCAN Algo (default 60)")
+    parser.add_argument("-eps", "--eps", type=float, default=4., help="Radial distance for DBSCAN Algo (default 4.)")
     args = parser.parse_args()
     if args.verbose:
         print("\n Parameter list for simulation ")
         for k in vars(args).keys():
             print("     ", k, "->", vars(args)[k])
-    utils.save_cmd(sys.argv, "data/outputs/{rad}/{sim_id}/".format(rad=args.rad, sim_id=args.sim_id))
     stype = "themis" if args.themis>0 else None
     if args.program == 0:
         sim = Simulate(args.rad, [args.start, args.end],
@@ -68,6 +69,7 @@ if __name__ == "__main__":
         proc = Process2Movie(args.rad, [args.start, args.end], args.sim_id, {"stype":stype, "beam":args.themis, "dur":args.dur})
         print("\n TODO\n")
     else: print("\n Invalid option, try 'python simulate.py -h'\n")
+    utils.save_cmd(sys.argv, "data/outputs/{rad}/{sim_id}/".format(rad=args.rad, sim_id=args.sim_id))
     import os
     os.system("rm *.log")
     os.system("rm -rf sd/__pycache__")

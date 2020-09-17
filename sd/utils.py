@@ -54,6 +54,10 @@ def parse_parameter(scan, p="v", velo=5000.):
             if p == "gflg_conv" and b.gflg_conv is not None: param.extend(b.gflg_conv)
             if p == "gflg_kde" and b.gflg_kde is not None: param.extend(b.gflg_kde)
             slist.extend(b.slist)
+    if len(times) > len(param): 
+        import itertools
+        l, pv = len(times)-len(param), [param[-1]]
+        param.extend(list(itertools.chain.from_iterable(itertools.repeat(x, l) for x in pv)))
     _d = {"times":times, p:param, "beam":beams, "slist":slist}
     _d = pd.DataFrame.from_records(_d)
     if p == "v" and velo is not None: _d = _d[np.abs(_d.v) < velo]
@@ -152,6 +156,12 @@ class Skills(object):
        """
        n_clusters = len(set(self.labels))
        return np.log(n_clusters) + self.X.shape[1] * np.log2(np.sqrt(self.sse/(self.X.shape[1]*self.X.shape[0]**2)))
+
+def get_radar(stn):
+    _o = pd.read_csv("radar.csv")
+    _o = _o[_o.rad==stn]
+    lat, lon, rad_type = _o["lat"].tolist()[0], np.mod( (_o["lon"].tolist()[0] + 180), 360 ) - 180, _o["rad_type"].tolist()[0]
+    return lat, lon, rad_type
 
 def get_geolocate_range_cells(rad):
     """

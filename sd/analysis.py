@@ -20,6 +20,7 @@ import time
 import glob
 import copy
 
+import utils
 from utils import Skills
 from get_sd_data import FetchData, Beam, Scan
 from boxcar_filter import Filter
@@ -52,6 +53,8 @@ class Simulate(object):
         self.gflg_type = -1
         for p in keywords.keys():
             setattr(self, p, keywords[p])
+        _, _, self.rad_type = utils.get_radar(self.rad)
+        if self.rad_type == "mid": self.gflg_type = 3
         self._create_dates()
         self._fetch()
         if hasattr(self, "clear") and self.clear: self._clear()
@@ -196,11 +199,25 @@ class Simulate(object):
             _m = np.empty((fblen,glen))
             _m[:], x = np.nan, _ru[k]
             for _j in range(fblen):
-                _m[_j,_g[_j]] = np.array(x[_j])
+                if len(_m[_j,_g[_j]]) == len(np.array(x[_j])): _m[_j,_g[_j]] = np.array(x[_j])
             tmp[:] = _m
         rootgrp.close()
         os.system("gzip " + fname)
         return
+
+    def slow_filter(self, fscans):
+        """
+        Do filter for sub-auroral scatter
+        """
+        #df = pd.DataFrame()
+        from sklearn.cluster import DBSCAN
+        for fsc in fscans:
+            df = self.io.convert_to_pandas(fsc.beams)
+            clustering = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(df[["bmnum","slist"]].values)
+            df["lables"] = clustering.labels_
+            for b in fsc.beams:
+                setattr(b, "labels", df[df.bmnum==b.bmnum].labels)
+        return fsc
 
     def _dofilter(self):
         """
@@ -208,6 +225,8 @@ class Simulate(object):
         """
         self.fscans = []
         if self.verbose: print("\n Very slow method to boxcar filtering.")
+        #if self.rad_type == "mid": self.scans = self.slow_filter(self.fscans)
+        print(self.gflg_type)
         for i, e in enumerate(self.dates):
             scans = self.scans[i:i+3]
             print(" Date - ", e)
@@ -254,8 +273,8 @@ class Simulate(object):
         drange = self.date_range
         drange[0], drange[1] = drange[0] - dt.timedelta(minutes=2*self.scan_prop["dur"]),\
                 drange[1] + dt.timedelta(minutes=2*self.scan_prop["dur"])
-        io = FetchData(self.rad, drange)
-        _, scans = io.fetch_data(by="scan", scan_prop=self.scan_prop)
+        self.io = FetchData(self.rad, drange)
+        _, scans = self.io.fetch_data(by="scan", scan_prop=self.scan_prop)
         self.filter = Filter(thresh=self.thresh, pbnd=self.pbnd, pth=self.pth, verbose=self.verbose)
         self.scans = []
         for s in scans:

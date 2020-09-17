@@ -35,8 +35,9 @@ class Gate(object):
         params: parameters to store
         """
         for p in params:
-            setattr(self, p, getattr(bm, p)[i])
-        if gflg_type >= 0: setattr(self, "gflg", getattr(bm, "gsflg")[gflg_type][i])
+            if len(getattr(bm, p)) > i : setattr(self, p, getattr(bm, p)[i])
+            else: setattr(self, p, np.nan)
+        if gflg_type >= 0 and len(getattr(bm, "gsflg")[gflg_type]) > 0: setattr(self, "gflg", getattr(bm, "gsflg")[gflg_type][i])
         return
 
 
@@ -108,7 +109,24 @@ class Beam(object):
         if len(self.v) > 0 and len(self.w_l) > 0: self.gsflg[0] = ((np.abs(self.v) + self.w_l/3.) < 30.).astype(int)
         if len(self.v) > 0 and len(self.w_l) > 0: self.gsflg[1] = ((np.abs(self.v) + self.w_l*0.4) < 60.).astype(int)
         if len(self.v) > 0 and len(self.w_l) > 0: self.gsflg[2] = ((np.abs(self.v) - 0.139*self.w_l + 0.00113*self.w_l**2) < 33.1).astype(int)
+        # Modified defination by S. Chakraborty: {W-[50-(0.7*(V+5)**2)]} < 0
+        self.gsflg[3] = ((np.array(self.w_l)-(50-(0.7*(np.array(self.v)+5)**2))<0)).astype(int)
         return
+
+    @staticmethod
+    def is_gs_estimation(v, w, kind=0):
+        """
+        Estimate GS flag using different criterion
+        Cases -
+                0. Sundeen et al. |v| + w/3 < 30 m/s
+                1. Blanchard et al. |v| + 0.4w < 60 m/s
+                2. Blanchard et al. [2009] |v| - 0.139w + 0.00113w^2 < 33.1 m/s
+        """
+        if kind == 0: gs = ((np.abs(v) + w/3.) < 30.).astype(int)
+        if kind == 1: gs = ((np.abs(v) + w*0.4) < 60.).astype(int)
+        if kind == 2: gs = ((np.abs(v) - 0.139*w + 0.00113*w**2) < 33.1).astype(int)
+        if kind == 3: gs = ((w_l-(50-(0.7*(v+5)**2))<0)).astype(int)
+        return gs
 
 
 class Scan(object):
@@ -246,6 +264,25 @@ class FetchData(object):
             _s.append(sc)
             if self.verbose: print("\n Converted to scan data.")
         return _b, _s
+
+    def convert_to_pandas(self, beams, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time"],
+            v_params=["pwr0", "v", "w_l", "gflg", "p_l", "slist", "v_e", "gflg_conv", "gflg_kde"]):
+        """
+        Convert the beam data into dataframe
+        """
+        _o = dict(zip(s_params+v_params, ([] for _ in s_params+v_params)))
+        for b in beams:
+            l = len(getattr(b, "slist"))
+            for p in v_params:
+                _o[p].extend(getattr(b, p))
+            for p in s_params:
+                _o[p].extend([getattr(b, p)]*l)
+        L = len(_o["slist"])
+        for p in s_params+v_params:
+            if len(_o[p]) < L: 
+                l = len(_o[p])
+                _o[p].extend([np.nan]*(L-l))
+        return pd.DataFrame.from_records(_o)
 
     def fetch_data(self, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us", "mppul"],
                         v_params=["pwr0", "v", "w_l", "gflg", "p_l", "slist", "v_e"],
