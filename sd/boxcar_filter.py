@@ -192,7 +192,8 @@ class Filter(object):
         sorted(oscan.beams, key=lambda bm: bm.bmnum)
         return oscan
 
-
+class MiddleLatFilter(object):
+    """ Class to a"""
 
 if __name__ == "__main__":
     create_gaussian_weights(mu=[0,0,0], sigma=[3,3,3], base_w=7)
