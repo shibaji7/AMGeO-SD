@@ -24,6 +24,13 @@ from utils import Skills
 config = configparser.ConfigParser()
 config.read("conf.properties")
 
+def to_normal_scan_id(d, key="scan"):
+    """ Convert to normal scan code """
+    sid = np.array(d[key])
+    sid[sid!=0] = 1
+    d[key] = sid
+    return d
+
 class Gate(object):
     """Class object to hold each range cell value"""
 
@@ -61,7 +68,9 @@ class Beam(object):
         """
         self.time = time
         for p in s_params:
-            if p in d.keys(): setattr(self, p, d[p])
+            if p in d.keys(): 
+                if p == "scan" and d[p] != 0: setattr(self, p, 1)
+                else: setattr(self, p, d[p])
             else: setattr(self, p, None)
         for p in v_params:
             if p in d.keys(): setattr(self, p, d[p])
@@ -215,7 +224,6 @@ class FetchData(object):
         """
         if self.files is None: self.files = []
         reg_ex = config.get("amgeo.sdloc","reg_ex")
-        #reg_ex = "/sd-data/{year}/fitacf/{rad}/{date}.*.{rad}.fitacf.bz2"
         days = (self.date_range[1] - self.date_range[0]).days + 2
         ent = -1
         for d in range(-1,days):
@@ -254,8 +262,8 @@ class FetchData(object):
             if self.verbose: print("\n Started converting to scan data.")
             scan, sc =  0, Scan(None, None, scan_prop["stype"])
             sc.beams.append(_b[0])
-            for d in _b[1:]:
-                if d.scan == 1:
+            for _ix, d in enumerate(_b[1:]):
+                if d.scan == 1 and d.time != _b[_ix].time:
                     sc.update_time()
                     _s.append(sc)
                     sc = Scan(None, None, scan_prop["stype"])
@@ -323,6 +331,7 @@ def beam_summary(rad, start, end):
     def _estimate_scan_duration(dx):
         """ Calculate scan durations in minutes """
         dx = dx[dx.scan==1]
+        dx = dx[dx.bmnum==dx.bmnum.tolist()[0]]
         sdur = (dx.time.tolist()[1].to_pydatetime() - dx.time.tolist()[0].to_pydatetime()).total_seconds()
         return int( (sdur+10)/60. )
     def _estimate_themis_beam(sdur, dx):
@@ -335,9 +344,11 @@ def beam_summary(rad, start, end):
     fd = FetchData(rad, [start, end])
     b, _ = fd.fetch_data()
     d = fd.to_pandas_summary(b)
+    print(d.head(15))
+    to_normal_scan_id(d, key="scan")
     dur = _estimate_scan_duration(d)
     themis = _estimate_themis_beam(dur, d)
-    return (dur, themis)
+    return {"s_time": dur, "t_beam": themis}
 
 if __name__ == "__main__":
     fdata = FetchData( "sas", [dt.datetime(2015,3,17,3),

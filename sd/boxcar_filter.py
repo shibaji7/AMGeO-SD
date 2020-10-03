@@ -59,20 +59,22 @@ class Filter(object):
         self.verbose = verbose
         return
 
-    def _discard_repeting_beams(self, scan):
+    def _discard_repeting_beams(self, scan, ch=True):
         """
         Discard all more than one repeting beams
         scan: SuperDARN scan
         """
         oscan = Scan(scan.stime, scan.etime, scan.stype)
-        sorted(scan.beams, key=lambda bm: (bm.bmnum, bm.time))
+        if ch: scan.beams = sorted(scan.beams, key=lambda bm: (bm.bmnum))
+        else: scan.beams = sorted(scan.beams, key=lambda bm: (bm.bmnum, bm.time))
         bmnums = []
         for bm in scan.beams:
             if bm.bmnum not in bmnums:
-                oscan.beams.append(bm)
-                bmnums.append(bm.bmnum)
+                if hasattr(bm, "slist") and len(getattr(bm, "slist")) > 0:
+                    oscan.beams.append(bm)
+                    bmnums.append(bm.bmnum)
         oscan.update_time()
-        sorted(oscan.beams, key=lambda bm: bm.bmnum)
+        oscan.beams = sorted(oscan.beams, key=lambda bm: bm.bmnum)
         return oscan
 
 
