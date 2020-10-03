@@ -39,6 +39,9 @@ def parse_parameter(scan, p="v", velo=5000.):
     """
     Parse the data from radar scan.
     """
+    if "gsflg_" in p:
+        gsflg_ind = int(p.split("_")[-1])
+        p = "gsflg"
     param,times,beams,slist = [], [], [], []
     for b in scan.beams:
         if b.slist is not None:
@@ -50,6 +53,7 @@ def parse_parameter(scan, p="v", velo=5000.):
             if p == "p_l" and b.p_l is not None: param.extend(b.p_l)
             if p == "v_e" and b.v_e is not None: param.extend(b.v_e)
             if p == "w_l" and b.w_l is not None: param.extend(b.w_l)
+            if p == "gsflg" and b.gsflg is not None and b.gsflg[gsflg_ind] is not None: param.extend(b.gsflg[gsflg_ind])
             if p == "gflg" and b.gflg is not None: param.extend(b.gflg)
             if p == "gflg_conv" and b.gflg_conv is not None: param.extend(b.gflg_conv)
             if p == "gflg_kde" and b.gflg_kde is not None: param.extend(b.gflg_kde)

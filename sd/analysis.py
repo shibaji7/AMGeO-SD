@@ -54,7 +54,6 @@ class Simulate(object):
         for p in keywords.keys():
             setattr(self, p, keywords[p])
         _, _, self.rad_type = utils.get_radar(self.rad)
-        if self.rad_type == "mid": self.gflg_type = 3
         self._create_dates()
         self._fetch()
         if hasattr(self, "clear") and self.clear: self._clear()
@@ -209,15 +208,37 @@ class Simulate(object):
         """
         Do filter for sub-auroral scatter
         """
-        #df = pd.DataFrame()
+        df = pd.DataFrame()
         from sklearn.cluster import DBSCAN
-        for fsc in fscans:
-            df = self.io.convert_to_pandas(fsc.beams)
-            clustering = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(df[["bmnum","slist"]].values)
-            df["lables"] = clustering.labels_
+        sid = []
+        for i, fsc in enumerate(fscans):
+            dx = self.io.convert_to_pandas(fsc.beams, v_params=["v", "w_l", "slist"])
+            df = df.append(dx)
+            sid.extend([i]*len(dx))
+        df["sid"] = sid
+        clustering = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(df[["bmnum","slist"]].values)
+        df["labels"] = clustering.labels_
+        df["gflg"] = [np.nan] * len(clustering.labels_)
+        #for l in set(clustering.labels_):
+            #u = df[df.labels==l]
+            #v, w = np.array(u.v), np.array(u.w_l)
+            #gflg = ( (w-(50-(0.7*(v+5)**2))) < 0 ).astype(int)
+            #if np.abs(np.median(v)) < 50: gflg = ( (w-(50-(0.7*(v+5)**2))) < 0 ).astype(int)
+            #else: gflg = [0]*len(v)
+            #df.loc[df.labels==l, "gflg"] = gflg
+            #df.loc[df.labels==l, "gflg"] = max(set(gflg), key=gflg.tolist().count)
+        for i, fsc in enumerate(fscans):
+            dx = df[df.sid==i]
+            for l in set(clustering.labels_):
+                u = dx[dx.labels==l]
+                if len(u) > 0:
+                    v, w = np.array(u.v), np.array(u.w_l)
+                    gflg = ( (w-(50-(0.7*(v+5)**2))) < 0 ).astype(int)
+                    dx.loc[dx.labels==l, "gflg"] = max(set(gflg), key=gflg.tolist().count)
             for b in fsc.beams:
-                setattr(b, "labels", df[df.bmnum==b.bmnum].labels)
-        return fsc
+                b.gsflg[3] = np.array(dx[dx.bmnum==b.bmnum].gflg)
+        self.gflg_type = 3
+        return
 
     def _dofilter(self):
         """
@@ -225,8 +246,7 @@ class Simulate(object):
         """
         self.fscans = []
         if self.verbose: print("\n Very slow method to boxcar filtering.")
-        #if self.rad_type == "mid": self.scans = self.slow_filter(self.fscans)
-        print(self.gflg_type)
+        #if self.rad_type == "mid": self.slow_filter(self.scans)
         for i, e in enumerate(self.dates):
             scans = self.scans[i:i+3]
             print(" Date - ", e)
@@ -259,7 +279,7 @@ class Simulate(object):
         for i, e in enumerate(self.dates):
             scans = self.scans[i:i+3]
             if hasattr(self, "dofilter") and self.dofilter: scans.append(self.fscans[i])
-            ip = IP("1plot", e, self.rad, self.sim_id, scans, {"thresh":self.thresh, "gs":"gflg_conv", "pth":self.pth, "pbnd":self.pbnd, 
+            ip = IP("1plot", e, self.rad, self.sim_id, scans, {"thresh":self.thresh, "gs":self.gflg_cast, "pth":self.pth, "pbnd":self.pbnd, 
                 "gflg_type": self.gflg_type}, xlim=[self.plt_xllim, self.plt_xulim], ylim=[self.plt_yllim, self.plt_yulim])
             ip.draw()
             ip.draw("4plot")
@@ -272,7 +292,7 @@ class Simulate(object):
         """
         drange = self.date_range
         drange[0], drange[1] = drange[0] - dt.timedelta(minutes=2*self.scan_prop["dur"]),\
-                drange[1] + dt.timedelta(minutes=2*self.scan_prop["dur"])
+                drange[1] + dt.timedelta(minutes=3*self.scan_prop["dur"])
         self.io = FetchData(self.rad, drange)
         _, scans = self.io.fetch_data(by="scan", scan_prop=self.scan_prop)
         self.filter = Filter(thresh=self.thresh, pbnd=self.pbnd, pth=self.pth, verbose=self.verbose)
@@ -288,8 +308,9 @@ class Simulate(object):
         self.dates = []
         dates = (self.date_range[1] + dt.timedelta(minutes=self.scan_prop["dur"]) - 
                 self.date_range[0]).total_seconds() / (self.scan_prop["dur"] * 60) 
-        for d in range(int(dates)):
-            self.dates.append(self.date_range[0] + dt.timedelta(minutes=d*self.scan_prop["dur"]))
+        for d in range(int(dates) + 2):
+            self.dates.append(self.date_range[0] - dt.timedelta(minutes=self.scan_prop["dur"]) 
+                    + dt.timedelta(minutes=d*self.scan_prop["dur"]))
         return
 
 class Process2Movie(object):
@@ -426,7 +447,7 @@ class Process2Movie(object):
         for i, e in enumerate(self.dates):
             scans = self.scans[i:i+3]
             scans.append(self.fscans[i])
-            ip = IP("1plot", e, self.rad, self.sim_id, scans, {"thresh":self.thresh, "gs":"gflg_conv", "pth":self.pth, "pbnd":self.pbnd,
+            ip = IP("1plot", e, self.rad, self.sim_id, scans, {"thresh":self.thresh, "gs":self.gflg_cast, "pth":self.pth, "pbnd":self.pbnd,
                 "gflg_type": self.gflg_type}, xlim=[self.plt_xllim, self.plt_xulim], ylim=[self.plt_yllim, self.plt_yulim])
             ip.draw()
             ip.draw("4plot")

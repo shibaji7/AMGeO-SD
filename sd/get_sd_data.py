@@ -284,9 +284,22 @@ class FetchData(object):
                 _o[p].extend([np.nan]*(L-l))
         return pd.DataFrame.from_records(_o)
 
-    def fetch_data(self, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us", "mppul"],
-                        v_params=["pwr0", "v", "w_l", "gflg", "p_l", "slist", "v_e"],
-                        by="beam", scan_prop={"dur": 1, "stype": "normal"}):
+    def to_pandas_summary(self, beams, s_params=["bmnum", "noise.sky", "tfreq",\
+            "scan", "nrang", "time", "mppul", "rsep", "cp", "frang", "intt.sc", "intt.us",\
+            "smsep", "lagfr", "channel"]):
+        """
+        Convert to pandas dataframe for beam summary
+        """
+        _o = dict(zip(s_params, ([] for _ in s_params)))
+        for b in beams:
+            for p in s_params:
+                _o[p].extend([getattr(b, p)])
+        return pd.DataFrame.from_records(_o)
+
+    def fetch_data(self, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us",\
+            "mppul", "nrang", "rsep", "cp", "frang", "smsep", "lagfr", "channel"],
+            v_params=["pwr0", "v", "w_l", "gflg", "p_l", "slist", "v_e"],
+            by="beam", scan_prop={"dur": 1, "stype": "normal"}):
         """
         Fetch data from file list and return the dataset
         params: parameter list to fetch
@@ -304,6 +317,27 @@ class FetchData(object):
             data += records
         if by is not None: data = self._parse_data(data, s_params, v_params, by, scan_prop)
         return data
+
+def beam_summary(rad, start, end):
+    """ Produce beam summary for beam sounding and scann mode """
+    def _estimate_scan_duration(dx):
+        """ Calculate scan durations in minutes """
+        dx = dx[dx.scan==1]
+        sdur = (dx.time.tolist()[1].to_pydatetime() - dx.time.tolist()[0].to_pydatetime()).total_seconds()
+        return int( (sdur+10)/60. )
+    def _estimate_themis_beam(sdur, dx):
+        """ Estimate themis mode and beam number if any """
+        th = -1 #No themis mode
+        dx = dx[dx.time < dx.time.tolist()[0].to_pydatetime()+dt.timedelta(minutes=sdur)]
+        lst = dx.bmnum.tolist()
+        th = max(set(lst), key=lst.count)
+        return th
+    fd = FetchData(rad, [start, end])
+    b, _ = fd.fetch_data()
+    d = fd.to_pandas_summary(b)
+    dur = _estimate_scan_duration(d)
+    themis = _estimate_themis_beam(dur, d)
+    return (dur, themis)
 
 if __name__ == "__main__":
     fdata = FetchData( "sas", [dt.datetime(2015,3,17,3),

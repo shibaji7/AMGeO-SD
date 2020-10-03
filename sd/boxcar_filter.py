@@ -151,7 +151,6 @@ class Filter(object):
                                     w_l.append(bx.w_l)
                                     p_l.append(bx.p_l)
                                     gfx.append(bx.gflg)
-    
                 if pts / tot >= self.thresh:# check if we meet the threshold
                     beam.slist.append(r)
                     beam.v.append(np.median(v))
@@ -164,6 +163,7 @@ class Filter(object):
                     beam.gflg.append(gflg)
                     
                     # Re-evaluate the groundscatter flag using weight function
+                    #if bmnum == 12: print(bmnum,"-",r,":(0,1)->",len(gfx)-np.count_nonzero(gfx),np.count_nonzero(gfx),np.nansum(gfx) / tot)
                     gflg = np.nansum(gfx) / tot
                     if np.nansum(gfx) / tot <= pbnd[0]: gflg=0.
                     elif np.nansum(gfx) / tot >= pbnd[1]: gflg=1.

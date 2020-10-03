@@ -40,6 +40,7 @@ if __name__ == "__main__":
     parser.add_argument("-ip", "--inv_plot", action="store_true", help="Investigative plots (defult False)")
     parser.add_argument("-sv", "--save", action="store_false", help="Save data to file (defult True)")
     parser.add_argument("-gft", "--gflg_type", type=int, default=-1, help="Ground scatter flag estimation type (default -1)")
+    parser.add_argument("-gct", "--gflg_cast", default="gflg_conv", help="Ground scatter flag final plot type (gflg_conv)")
     parser.add_argument("-c", "--clear", action="store_true", help="Clear pervious stored files (default False)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Increase output verbosity (default False)")
     parser.add_argument("-th", "--thresh", type=float, default=.7, help="Threshold value for filtering (default 0.7)")
@@ -51,8 +52,8 @@ if __name__ == "__main__":
     parser.add_argument("-pl_xl", "--plt_xllim", type=int, default=-2, help="Lower X-lim of plotting (default -2)")
     parser.add_argument("-pl_yu", "--plt_yulim", type=int, default=70, help="Upper Y-lim of plotting (default 70)")
     parser.add_argument("-pl_yl", "--plt_yllim", type=int, default=0, help="Lower Y-lim of plotting (default 0)")
-    parser.add_argument("-ms", "--min_sample", type=int, default=60, help="Minimum Sample for DBSCAN Algo (default 60)")
-    parser.add_argument("-eps", "--eps", type=float, default=4., help="Radial distance for DBSCAN Algo (default 4.)")
+    parser.add_argument("-ms", "--min_samples", type=int, default=20, help="Minimum Sample for DBSCAN Algo (default 60)")
+    parser.add_argument("-eps", "--eps", type=float, default=2., help="Radial distance for DBSCAN Algo (default 4.)")
     args = parser.parse_args()
     if args.verbose:
         print("\n Parameter list for simulation ")
@@ -64,7 +65,8 @@ if __name__ == "__main__":
             {"stype":stype, "beam":args.themis, "dur":args.dur}, inv_plot=args.inv_plot, dofilter=args.dofilter, 
             make_movie=args.movie, gflg_type=args.gflg_type, skills=args.skills, save=args.save, clear=args.clear, 
             thresh=args.thresh, pth=args.pth, pbnd=[args.lth, args.uth], verbose=args.verbose, sim_id=args.sim_id, 
-            plt_xulim=args.plt_xulim, plt_xllim=args.plt_xllim, plt_yulim=args.plt_yulim, plt_yllim=args.plt_yllim)
+            plt_xulim=args.plt_xulim, plt_xllim=args.plt_xllim, plt_yulim=args.plt_yulim, plt_yllim=args.plt_yllim,
+            gflg_cast=args.gflg_cast, eps=args.eps, min_samples=args.min_samples)
     elif args.program == 1:
         proc = Process2Movie(args.rad, [args.start, args.end], args.sim_id, {"stype":stype, "beam":args.themis, "dur":args.dur})
         print("\n TODO\n")

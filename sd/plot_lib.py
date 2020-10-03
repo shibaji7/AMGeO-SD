@@ -97,7 +97,9 @@ class MasterPlotter(object):
             keys={"oc": {"size":5, "color":"k", "marker":"o", "facecolors":"None", "edgecolors":"k", "alpha":1., "lw":.1},
                 "cc": {"size":5, "color":"k", "marker":"o", "facecolors":"k", "edgecolors":"k", "alpha":0.5, "lw":.1},
                 "un": {"size":5, "color":"k", "marker":r"$\oslash$", "facecolors":"None", "edgecolors":"k", "alpha":1., "lw":.1}}):
-        Xgs,Ygs,ugs = utils.get_gridded_parameters(utils.parse_parameter(scan, p=cast), zparam=cast)
+        zp = cast
+        if "gsflg_" in cast: zp = "gsflg"
+        Xgs,Ygs,ugs = utils.get_gridded_parameters(utils.parse_parameter(scan, p=cast), zparam=zp)
         xoc = np.ma.masked_where(np.logical_not(ugs.T.astype(float)==1.),Xgs)
         yoc = np.ma.masked_where(np.logical_not(ugs.T.astype(float)==1.),Ygs)
         ax.scatter(xoc, yoc, s=keys["oc"]["size"], color=keys["oc"]["color"], marker=keys["oc"]["marker"],
@@ -119,8 +121,10 @@ class MasterPlotter(object):
             keys={"oc": {"color":"k", "marker":"o", "facecolors":"None", "edgecolors":"k", "alpha":0., "lw":.1},
                 "cc": {"color":"k", "marker":"o", "facecolors":"k", "edgecolors":"k", "alpha":0.5, "lw":.1},
                 "un": {"color":"k", "marker":r"$\oslash$", "facecolors":"None", "edgecolors":"k", "alpha":1., "lw":.1}}, c=15):
+        zp = cast
+        if "gsflg_" in cast: zp = "gsflg"
         u = c * np.abs(u) / np.max(np.abs(u))
-        Xgs,Ygs,ugs = utils.get_gridded_parameters(utils.parse_parameter(scan, p=cast), zparam=cast)
+        Xgs,Ygs,ugs = utils.get_gridded_parameters(utils.parse_parameter(scan, p=cast), zparam=zp)
         xoc = np.ma.masked_where(np.logical_not(ugs.T.astype(float)==1.),Xgs)
         yoc = np.ma.masked_where(np.logical_not(ugs.T.astype(float)==1.),Ygs)
         uoc = np.ma.masked_where(np.logical_not(ugs.T.astype(float)==1.),u.T)
@@ -172,6 +176,8 @@ class MasterPlotter(object):
             keys={"oc": {"color":"k", "marker":"o", "facecolors":"None", "edgecolors":"k", "alpha":1., "lw":.1},
                 "cc": {"color":"k", "marker":"o", "facecolors":"k", "edgecolors":"k", "alpha":0.5, "lw":.1},
                 "un": {"color":"k", "marker":r"$\oslash$", "facecolors":"None", "edgecolors":"k", "alpha":1., "lw":.1}}, c=15):
+        zp = cast
+        if "gsflg_" in cast: zp = "gsflg"
         ax = self.set_axes(ax)
         ax.text(label["xx"], label["yy"], label["text"],
                 horizontalalignment="center", verticalalignment="center",
@@ -212,12 +218,14 @@ class InvestigativePlots(MasterPlotter):
         """
         Draw the figures for the scan
         """
+        cast = "gflg"
+        if self.gflg_type > 0: cast = "gsflg_" + str(self.gflg_type)
         if figure_name is not None: self.figure_name = figure_name
         if self.figure_name == "1plot":
             C = 20
             dur = int((self.data[1].stime.replace(microsecond=0)-self.data[0].stime.replace(microsecond=0)).seconds/60.)
             fig, ax = plt.subplots(figsize=(6, 4), sharex="all", sharey="all", nrows=1, ncols=1, dpi=100)
-            mx = self.draw_scatter(ax, self.data[1], label={"xx":0.75, "yy":1.03, "text":r"$power^{LoS}[dB]$"}, zparam="p_l", c=C)
+            mx = self.draw_scatter(ax, self.data[1], label={"xx":0.75, "yy":1.03, "text":r"$power^{LoS}[dB]$"}, zparam="p_l", c=C, cast=cast)
             self.set_size_legend(ax, mx, leg_keys=("30", "15", "5"), leg=self.set_point_legend(ax), c=C)
             fig.text(0.5, 0.01, "Beams", ha="center",fontdict={"color":"blue"})
             fig.text(0.06, 0.5, "Gates", va="center", rotation="vertical",fontdict={"color":"blue"})
@@ -242,16 +250,18 @@ class InvestigativePlots(MasterPlotter):
             fig.suptitle("Date=%s, Rad=%s, Scan Dur=%d min"%(self.e.strftime("%Y-%m-%d %H:%M"),self.rad.upper(),dur), size=12,
                                         y=0.94, fontdict={"color":"darkblue"})
             C = 30
-            self.draw_quiver(axes[0,0], self.data[1], label={"xx":.9, "yy":1.05, "text":r"$v^{LoS}[m/s]$"}, zparam="v")
+            self.draw_quiver(axes[0,0], self.data[1], label={"xx":.9, "yy":1.05, "text":r"$v^{LoS}[m/s]$"}, zparam="v", cast=cast)
             axes[0,0].text(0.2, 1.05, "GS Flag=%s"%(gs_map[self.gflg_type]), fontdict={"color":"blue","size":7},
                                         ha="center", va="center", transform=axes[0,0].transAxes)
             self.set_point_legend(axes[0,0])
-            mx = self.draw_scatter(axes[0,1], self.data[1], 
-                    label={"xx":0.75, "yy":1.05, "text":r"$v_{error}^{LoS}[m/s]$"}, zparam="v_e", c=C)
+            mx = self.draw_scatter(axes[0,1], self.data[1], label={"xx":0.75, "yy":1.05, "text":r"$v_{error}^{LoS}[m/s]$"}, 
+                    zparam="v_e", c=C, cast=cast)
             self.set_size_legend(axes[0,1], mx, leg_keys=("90", "45", "10"), leg=self.set_point_legend(axes[0,1]), c=C)
-            mx = self.draw_scatter(axes[1,0], self.data[1], label={"xx":0.75, "yy":1.05, "text":r"$power^{LoS}[dB]$"}, zparam="p_l", c=C)
+            mx = self.draw_scatter(axes[1,0], self.data[1], label={"xx":0.75, "yy":1.05, "text":r"$power^{LoS}[dB]$"}, zparam="p_l", 
+                    c=C, cast=cast)
             self.set_size_legend(axes[1,0], mx, leg_keys=("30", "15", "5"), leg=self.set_point_legend(axes[1,0]), c=C)
-            mx = self.draw_scatter(axes[1,1], self.data[1], label={"xx":0.75, "yy":1.05, "text":r"$width^{LoS}[m/s]$"}, zparam="w_l", c=C)
+            mx = self.draw_scatter(axes[1,1], self.data[1], label={"xx":0.75, "yy":1.05, "text":r"$width^{LoS}[m/s]$"}, 
+                    zparam="w_l", c=C, cast=cast)
             self.set_size_legend(axes[1,1], mx, leg_keys=("200", "100", "10"), leg=self.set_point_legend(axes[1,1]), c=C)
             fig.savefig("{folder}{date}.4plot.png".format(folder=self.folder,
                                 rad=self.rad, date=self.e.strftime("%Y%m%d%H%M")),bbox_inches="tight")
@@ -269,16 +279,16 @@ class InvestigativePlots(MasterPlotter):
             fonttext["size"] = 7
             
             ax = plt.subplot2grid(shape=(2,6), loc=(0,0), colspan=2)
-            self.draw_quiver(ax, self.data[0], label={"xx":0.2, "yy":1.05, "text":"UT=%s"%scan_times[0].strftime("%H:%M")}, cast="gflg")
+            self.draw_quiver(ax, self.data[0], label={"xx":0.2, "yy":1.05, "text":"UT=%s"%scan_times[0].strftime("%H:%M")}, cast=cast)
             self.set_point_legend(ax)
             ax.set_xticklabels([])
             ax = plt.subplot2grid(shape=(2,6), loc=(0,2), colspan=2)
-            self.draw_quiver(ax, self.data[1], label={"xx":0.2, "yy":1.05, "text":"UT=%s"%scan_times[1].strftime("%H:%M")}, cast="gflg")
+            self.draw_quiver(ax, self.data[1], label={"xx":0.2, "yy":1.05, "text":"UT=%s"%scan_times[1].strftime("%H:%M")}, cast=cast)
             self.set_point_legend(ax)
             ax.set_yticklabels([])
             ax.set_xticklabels([])
             ax = plt.subplot2grid(shape=(2,6), loc=(0,4), colspan=2)
-            self.draw_quiver(ax, self.data[2], label={"xx":0.2, "yy":1.05, "text":"UT=%s"%scan_times[2].strftime("%H:%M")}, cast="gflg")
+            self.draw_quiver(ax, self.data[2], label={"xx":0.2, "yy":1.05, "text":"UT=%s"%scan_times[2].strftime("%H:%M")}, cast=cast)
             self.set_point_legend(ax)
             ax.text(1.05, .5, "GS Flag=%s"%(gs_map[self.gflg_type]), fontdict={"color":"blue","size":7},
                                         ha="center", va="center", transform=ax.transAxes, rotation=90)
