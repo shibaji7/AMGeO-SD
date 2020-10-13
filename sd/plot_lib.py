@@ -19,8 +19,10 @@ import matplotlib.ticker as mticker
 import spacepy.plot as splot
 import seaborn as sns
 import matplotlib.colors as mcolors
+from matplotlib.ticker import MultipleLocator
 
 import numpy as np
+import pandas as pd
 import datetime as dt
 
 splot.style("spacepy_altgrid")
@@ -448,3 +450,106 @@ class MovieMaker(MasterPlotter):
             elif self.figure_name == "med_filt": self._plot_med_filt()
         self._create_movie()
         return
+
+def rand_jitter(arr):
+    stdev = .01*(max(arr)-min(arr))
+    return arr + np.random.randn(len(arr)) * stdev
+
+def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
+    """ Plot gate distribution summary """
+    fig, axes = plt.subplots(figsize=(5,5), nrows=4, ncols=1, sharey="row", dpi=150)
+    attrs = ["p_l"]
+    labels = ["Power (dB)"]
+    for j, attr, lab in zip(range(1), attrs, labels):
+        ax = axes[j]
+        ax.scatter(rand_jitter(df.slist), rand_jitter(df[attr]), color="r", s=1)
+        ax.grid(True)
+        ax.set_ylabel(lab, fontdict=font)
+        ax.set_xlim(0,110)
+    ax.xaxis.set_minor_locator(MultipleLocator(1))
+    ax = axes[-3]
+    ax.xaxis.set_minor_locator(MultipleLocator(1))
+    ax.scatter(df.groupby(["slist"]).count().reset_index()["slist"], df.groupby(["slist"]).count().reset_index()["p_l"], color="k", s=3)
+    ax.grid(True)
+    ax.set_ylabel("Count", fontdict=font)
+    ax.set_xlim(0,110)
+    fonttext["color"] = "k"
+    ax = axes[-2]
+    ax.scatter(smooth[0], smooth[1], color="k", s=3)
+    ax.xaxis.set_minor_locator(MultipleLocator(1))
+    ax.grid(True)
+    ax.set_xlim(0,110)
+    ax.set_ylabel("<Count>", fontdict=font)
+    ax = axes[-1]
+    ax.xaxis.set_minor_locator(MultipleLocator(1))
+    ax.grid(True)
+    ax.set_xlim(0,110)
+    ax.set_xlabel("Gate", fontdict=font)
+    ax.set_ylabel(r"$d_{<Count>}$", fontdict=font)
+    ds = pd.DataFrame()
+    ds["x"], ds["y"] = smooth[0], smooth[1]
+    for k in gate_lims.keys():
+        l, u = gate_lims[k][0], gate_lims[k][1]
+        du = ds[(ds.x>=l) & (ds.x<=u)]
+        p = np.append(np.diff(du.y), [0])
+        p[np.argmax(du.y)] = 0
+        ax.scatter(du.x, p, color="k", s=3)
+    ax.axhline(0, color="b", lw=0.4, ls="--")
+    ax.scatter(smooth[0], smooth[1], color="r", s=1, alpha=.6)
+    ax.scatter(ds.x, ds.y, color="b", s=0.6, alpha=.5)
+    fonttext["size"] = 8
+    for k, n in zip(gate_lims.keys(), names.keys()):
+        if k >= 0:
+            for j in range(len(axes)):
+                ax = axes[j]
+                ax.axvline(x=gate_lims[k][0], color="b", lw=0.6, ls="--")
+                ax.axvline(x=gate_lims[k][1], color="darkgreen", lw=0.6, ls=":")
+                ax.text(np.mean(gate_lims[k])/110, 0.7, names[n],
+                    horizontalalignment="center", verticalalignment="center",
+                    transform=ax.transAxes, fontdict=fonttext)
+    beams = sb[1]
+    scans = sb[0]
+    fig.suptitle("Rad-%s, %s [%s-%s] UT"%(rad, df.time.tolist()[0].strftime("%Y-%m-%d"), 
+        df.time.tolist()[0].strftime("%H.%M"), df.time.tolist()[-1].strftime("%H.%M")) + "\n" + 
+        r"$N_{scans}=%d, N_{beams}=%d, N_{gates}=%d, Count_{max}=%d$"%(scans, beams, 110, scans*beams), size=12)
+    fig.savefig(fname, bbox_inches="tight")
+    plt.close()
+    fig, axes = plt.subplots(figsize=(21,12), nrows=4, ncols=len(gate_lims.keys()), sharey=True, dpi=150)
+    fonttext["size"] = 5
+    for i, k in enumerate(gate_lims.keys()):
+        ax = axes[0, i]
+        dx = df[(df.slist>=gate_lims[k][0]) & (df.slist<=gate_lims[k][1])]
+        bins = list(range(-100,100,1))
+        ax.hist(dx.v, bins=bins, histtype="step", density=False)
+        if i==0: ax.set_ylabel("Density", fontdict=font)
+        if i==len(gate_lims.keys())-1: ax.text(1.05, 0.5, "Velocity (m/s)", horizontalalignment="center", verticalalignment="center",
+                transform=ax.transAxes, fontdict=fonttext, rotation=90)
+        stat = "\n" + r"$\mu,\hat{v},CI(90)$=%.1f,%.1f,%.1f"%(np.mean(dx.v), np.median(dx.v),np.nanquantile(np.abs(dx.v), 0.9))
+        ax.text(0.6, 0.7, str(k) + stat, horizontalalignment="center", verticalalignment="center",
+                transform=ax.transAxes, fontdict=fonttext)
+        ax = axes[1, i]
+        dx = df[(df.slist>=gate_lims[k][0]) & (df.slist<=gate_lims[k][1])]
+        bins = list(range(-1000,1000,1))
+        ax.hist(dx.v, bins=bins, histtype="step", density=False)
+        if i==0: ax.set_ylabel("Density", fontdict=font)
+        if i==len(gate_lims.keys())-1: ax.text(1.05, 0.5, "Velocity (m/s)", horizontalalignment="center", verticalalignment="center",
+                transform=ax.transAxes, fontdict=fonttext, rotation=90)
+        stat = "\n" + r"$\mu,\hat{v},CI(90)$=%.1f,%.1f,%.1f"%(np.mean(dx.v), np.median(dx.v),np.nanquantile(np.abs(dx.v), 0.9))
+        ax.text(0.6, 0.7, str(k) + stat, horizontalalignment="center", verticalalignment="center",
+                transform=ax.transAxes, fontdict=fonttext)
+        ax = axes[2, i]
+        ax.hist(dx.w_l, bins=range(0,100,1), histtype="step", density=False)
+        if i==0: ax.set_ylabel("Density", fontdict=font)
+        if i==len(gate_lims.keys())-1: ax.text(1.05, 0.5, "Width (m/s)", horizontalalignment="center", verticalalignment="center",
+                                transform=ax.transAxes, fontdict=fonttext, rotation=90)
+        stat = "\n" + r"$\mu,\hat{w},CI(90)$=%.1f,%.1f,%.1f"%(np.mean(dx.w_l), np.median(dx.w_l), np.nanquantile(np.abs(dx.w_l), 0.9))
+        ax.text(0.6, 0.7, str(k) + stat, horizontalalignment="center", verticalalignment="center",
+                transform=ax.transAxes, fontdict=fonttext)
+        ax = axes[3, i]
+        ax.scatter(dx.v, np.abs(dx.w_l), s=2)
+        ax.set_xlim(-100,100)
+        ax.set_ylim(0,100)
+        if i==0: ax.set_xlabel("Velocity (m/s)", fontdict=font)
+        ax.set_ylabel("Width (m/s)", fontdict=font)
+    fig.savefig(fname.replace("png", "pdf"), bbox_inches="tight")
+    return

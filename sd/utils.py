@@ -15,7 +15,22 @@ import os
 import netCDF4
 import numpy as np
 import pandas as pd
+from scipy.stats import beta
 from sklearn.metrics import davies_bouldin_score, calinski_harabasz_score, silhouette_score
+
+
+def smooth(x, window_len=51, window="hanning"):
+    if x.ndim != 1: raise ValueError("smooth only accepts 1 dimension arrays.")
+    if x.size < window_len: raise ValueError("Input vector needs to be bigger than window size.")
+    if window_len<3: return x
+    if not window in ["flat", "hanning", "hamming", "bartlett", "blackman"]: raise ValueError("Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'")
+    s = np.r_[x[window_len-1:0:-1],x,x[-2:-window_len-1:-1]]
+    if window == "flat": w = numpy.ones(window_len,"d")
+    else: w = eval("np."+window+"(window_len)")
+    y = np.convolve(w/w.sum(),s,mode="valid")
+    d = window_len - 1
+    y = y[int(d/2):-int(d/2)]
+    return y
 
 def get_gridded_parameters(q, xparam="beam", yparam="slist", zparam="v", r=0):
     """
@@ -184,3 +199,71 @@ def save_cmd(args, f):
     cmd = "python " + " ".join(args)
     with open(f + "script.cmd", "w") as o: o.write(cmd)
     return
+
+
+class SDScatter(object):
+    """ SuperDARN scatter detection and identification module """
+    
+    IS = 0 # Ionospheric scatter
+    GS = 1 # Ground scatter
+    US = -1 # Unknown scatter
+    
+    def __init__(self, method=0):
+        """
+        Initialze scatters using different methods [0, 1, 2, 3, 4]
+        0: Sundeen et al. |v| + w/3 < 30 m/s
+        1: Blanchard et al. |v| + 0.4w < 60 m/s
+        2: Blanchard et al. [2009] |v| - 0.139w + 0.00113w^2 < 33.1 m/s
+        3: Proposed for SAIS w-[50-{0.7*(v+5)^2}] = 0 m/s
+        """
+        self.method = method
+        return
+    
+    def get_name(self):
+        """ Get the name of the method """
+        if self.method == 0: u = "Sundeen"
+        if self.method == 1: u = "Blanchard"
+        if self.method == 2: u = "Blanchard.2009"
+        if self.method == 3: u = "Proposed.SAIS"
+        return u
+    
+    def classify_proba(self, w, v, pth=0.5):
+        """ Classify based on velocity and spectral width """
+        self.gs = None
+        if method == 0: self.gs_p = 1 / ( 1 + np.exp(np.abs(v) + w/3 - 30) )
+        if method == 1: self.gs_p = 1 / ( 1 + np.exp(np.abs(v) + 0.4*w - 60) )
+        if method == 2: self.gs_p = 1 / ( 1 + np.exp(np.abs(v) - 0.139*w + 0.00113*w**2 - 33.1) )
+        if method == 3: self.gs_p = 1 / ( 1 + np.exp(w - 50-(0.7*(v+5)**2)) )
+        if pth is not None and pth >= 0: self.gs = (self.gs_p >= pth).astype(int)
+        return (self.gs_p, self.gs)
+
+    def classify_cluster(self, clusters, pth=0.5, pbnd=[1./5., 4./5.], model="kde"):
+        """
+        Classify based on velocity and spectral width
+
+        clusters: {Ci: {v: velocity, w: width}}
+        pth: Threshold probability
+        pbnd: Threshold boundaries for cluster classify
+        model: kde, max, median, mean
+        """
+        cluster_id, fit_param = {}, {}
+        for ci in clusters.keys():
+            v, w = clusters[ci]["v"], clusters[ci]["w"]
+            if model == "kde":
+                gs_p, _ = self.classify_proba(w, v, pth)
+                a, b, loc, scale = beta.fit(_gfx, floc=0., fscale=1.)
+                gflg = 1 - beta.cdf(pth, a, b, loc=0., scale=1.)
+                fit_param[ci] = {"a": a, "b": b}
+            elif model == "max":
+                gs_p, gs = self.classify_proba(w, v, pth)
+                gflg = max(set(gs), key = gs.count)
+            elif model == "median":
+                v, w = np.median(v), np.median(w)
+                gflg, _ = self.classify_proba(w, v, pth)
+            elif model == "mean":
+                v, w = np.mean(v), np.mean(w)
+                gflg, _ = self.classify_proba(w, v, pth)
+            if gflg <= pbnd[0]: cluster_id[ci] = SDScatter.IS
+            elif gflg >= pbnd[1]: cluster_id[ci] = SDScatter.GS
+            else: cluster_id[ci] = SDScatter.US
+        return cluster_id, fit_param

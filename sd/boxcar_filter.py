@@ -14,10 +14,13 @@ __status__ = "Research"
 import copy
 import numpy as np
 from scipy import stats as st
+from scipy import signal
 from scipy.stats import beta
 import pandas as pd
 
 from get_sd_data import Gate, Beam, Scan
+from plot_lib import *
+import utils
 
 
 def create_gaussian_weights(mu, sigma, _kernel=3, base_w=5):
@@ -192,8 +195,176 @@ class Filter(object):
         sorted(oscan.beams, key=lambda bm: bm.bmnum)
         return oscan
 
+class BoxCarGate(object):
+    """Class to filter data - Boxcar median filter 1D."""
+
+    def __init__(self, thresh=.1, w=None, verbose=True):
+        """
+        initialize variables
+
+        thresh: Threshold of the weight matrix
+        w: Weight matrix
+        """
+        self.thresh = thresh
+        if w is None: w = np.array([1,3,1])
+        self.w = w
+        self.verbose = verbose
+        return
+
+    def _discard_repeting_beams(self, scan, ch=True):
+        """
+        Discard all more than one repeting beams
+        scan: SuperDARN scan
+        """
+        oscan = Scan(scan.stime, scan.etime, scan.stype)
+        if ch: scan.beams = sorted(scan.beams, key=lambda bm: (bm.bmnum))
+        else: scan.beams = sorted(scan.beams, key=lambda bm: (bm.bmnum, bm.time))
+        bmnums = []
+        for bm in scan.beams:
+            if bm.bmnum not in bmnums:
+                if hasattr(bm, "slist") and len(getattr(bm, "slist")) > 0:
+                    oscan.beams.append(bm)
+                    bmnums.append(bm.bmnum)
+        oscan.update_time()
+        oscan.beams = sorted(oscan.beams, key=lambda bm: bm.bmnum)
+        return oscan
+
+
+    def doFilter(self, i_scan, gflg_type=-1):
+        """
+        Median filter based on the weight given by matrix (3X3X3) w, and threshold based on thresh
+    
+        i_scan: 1 radar scan
+        gflg_type: Type of gflag used in this study [-1, 0, 1, 2] -1 is default other numbers are listed in
+                    Evan's presentation.
+        """
+        self.scan = i_scan
+        w = self.w
+        oscan = Scan(scan.stime, scan.etime, scan.stype)
+    
+        for b in self.scan.beams:
+            bmnum = b.bmnum
+            beam = Beam()
+            beam.copy(b)
+    
+            for key in beam.__dict__.keys():
+                if type(getattr(beam, key)) == np.ndarray: setattr(beam, key, [])
+
+            for r in range(0,b.nrang):
+                box = [None for n in range(3)]
+                for n in range(-1,2):# iterate through gate
+                    if r+n in b.slist:
+                        ind = np.array(b.slist).tolist().index(r + n)
+                        box[n+1] = Gate(b, ind, gflg_type=gflg_type)
+                    else: box[n+1] = None
+                pts = 0.0
+                tot = 0.0
+                v,w_l,p_l = list(), list(), list()
+        
+                for n in range(0,3):# iterate through gate
+                    bx = box[n]
+                    wt = w[n]
+                    tot += wt
+                    if bx is not None:
+                        pts += wt
+                        for m in range(0, wt):
+                            v.append(bx.v)
+                            w_l.append(bx.w_l)
+                            p_l.append(bx.p_l)
+                if pts / tot >= self.thresh:# check if we meet the threshold
+                    beam.slist.append(r)
+                    beam.v.append(np.median(v))
+                    beam.w_l.append(np.median(w_l))
+                    beam.p_l.append(np.median(p_l))
+                    beam.v_mad.append(np.median(np.abs(np.array(v)-np.median(v))))
+            oscan.beams.append(beam)
+    
+        oscan.update_time()
+        sorted(oscan.beams, key=lambda bm: bm.bmnum)
+        return oscan
+
 class MiddleLatFilter(object):
-    """ Class to a"""
+    """ Class to filter middle latitude radars """
+
+    def __init__(self, rad, scans, thresh=0.2):
+        """
+        initialize variables
+        
+        rad: Radar code
+        scans: List of scans
+        thresh: Threshold of the weight matrix
+        """
+        self.rad = rad
+        self.scans = scans
+        self.thresh = thresh
+        return
+
+    def extract_gatelims(self, df):
+        """
+        Extract gate limits for individual clusters
+        """
+        glims = {}
+        for l in set(df.labels):
+            if l >= 0:
+                u = df[df.labels==l]
+                if len(u) > 0: glims[l] = [np.min(u.slist) + 1, np.max(u.slist) - 1]
+        return glims
+    
+    def doFilter(self, io, window=7, order=1, beams=[]):
+        """
+        Do filter for sub-auroral scatter
+        """
+        from sklearn.cluster import DBSCAN
+        df = pd.DataFrame()
+        sb = [np.nan, np.nan]
+        for i, fsc in enumerate(self.scans):
+            dx = io.convert_to_pandas(fsc.beams, v_params=["p_l", "v", "w_l", "slist"])
+            df = df.append(dx)
+        if beams == None or len(beams) == 0: 
+            bm = "all"
+            sb[0], sb[1] = len(self.scans), np.max(df.bmnum) - np.min(df.bmnum) +1
+            rng, eco = np.array(df.groupby(["slist"]).count().reset_index()["slist"]),\
+                    np.array(df.groupby(["slist"]).count().reset_index()["p_l"])
+            glims, labels = {}, []
+            eco = utils.smooth(eco, window)
+            troughs = signal.argrelmin(eco, order=order)[0]
+            df["labels"] = [np.nan] * len(df)
+            names = {}
+            troughs = np.insert(troughs, 0, 0)
+            troughs = np.append(troughs, [np.max(df.slist)])
+            troughs[-2] = troughs[-2] + 1
+            for r in range(len(troughs)-1):
+                glims[r] = [troughs[r], troughs[r+1]]
+                df["labels"] = np.where((df["slist"]<=troughs[r+1]) & (df["slist"]>=troughs[r]), r, df["labels"])
+                names[r] = "C" + str(r)
+            print(" Individual clster detected: ", set(df.labels))
+            to_midlatitude_gate_summary(self.rad, df, glims, names, (rng,eco),
+                    "data/outputs/{r}/gate_{bm}_summary.png".format(r=self.rad, bm=bm), sb)
+        else:
+            for bm in beams:
+                sb[0], sb[1] = len(self.scans), 1
+                print(" Beam Analysis: ", bm)
+                du = pd.DataFrame()
+                du = df[df.bmnum==bm]
+                rng, eco = np.array(du.groupby(["slist"]).count().reset_index()["slist"]),\
+                        np.array(du.groupby(["slist"]).count().reset_index()["p_l"])
+                eco = utils.smooth(eco, window)
+                glims, labels = {}, []
+                ds = DBSCAN(eps=2, min_samples=10).fit(du[["slist"]].values)
+                du["labels"] = ds.labels_
+                names = {}
+                for j, r in enumerate(set(ds.labels_)):
+                    x = du[du.labels==r]
+                    glims[r] = [np.min(x.slist), np.max(x.slist)]
+                    names[r] = "C"+str(j)
+                print(" Individual clster detected: ", set(du.labels))
+                to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco),
+                        "data/outputs/{r}/gate_{bm}_summary.png".format(r=self.rad, bm=bm), sb)
+        return
+
+
+
+
 
 if __name__ == "__main__":
     create_gaussian_weights(mu=[0,0,0], sigma=[3,3,3], base_w=7)

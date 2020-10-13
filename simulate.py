@@ -22,7 +22,7 @@ import argparse
 import dateutil
 
 import utils
-from analysis import Simulate, Process2Movie
+from analysis import Simulate, Process2Movie, printFitRec
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -67,7 +67,8 @@ if __name__ == "__main__":
             thresh=args.thresh, pth=args.pth, pbnd=[args.lth, args.uth], verbose=args.verbose, sim_id=args.sim_id, 
             plt_xulim=args.plt_xulim, plt_xllim=args.plt_xllim, plt_yulim=args.plt_yulim, plt_yllim=args.plt_yllim,
             gflg_cast=args.gflg_cast, eps=args.eps, min_samples=args.min_samples)
-    elif args.program == 1:
+    elif args.program == 1: printFitRec(args.rad, [args.start, args.end])
+    elif args.program == 2:
         proc = Process2Movie(args.rad, [args.start, args.end], args.sim_id, {"stype":stype, "beam":args.themis, "dur":args.dur})
         print("\n TODO\n")
     else: print("\n Invalid option, try 'python simulate.py -h'\n")

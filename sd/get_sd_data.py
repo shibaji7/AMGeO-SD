@@ -341,13 +341,17 @@ def beam_summary(rad, start, end):
         lst = dx.bmnum.tolist()
         th = max(set(lst), key=lst.count)
         return th
+    cols = ["time","channel","bmnum","scan","tfreq","frang","smsep","rsep","cp","nrang","mppul",
+            "lagfr","intt.sc","intt.us","noise.sky"]
     fd = FetchData(rad, [start, end])
     b, _ = fd.fetch_data()
     d = fd.to_pandas_summary(b)
-    print(d.head(15))
+    print(d[cols].head(15))
     to_normal_scan_id(d, key="scan")
     dur = _estimate_scan_duration(d)
     themis = _estimate_themis_beam(dur, d)
+    d[cols].to_csv("data/{rad}.{dn}.{start}.{end}.csv".format(rad=rad, dn=start.strftime("%Y%m%d"),
+        start=start.strftime("%H%M"), end=end.strftime("%H%M")), header=True, index=False)
     return {"s_time": dur, "t_beam": themis}
 
 if __name__ == "__main__":

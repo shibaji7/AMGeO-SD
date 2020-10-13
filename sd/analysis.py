@@ -22,11 +22,17 @@ import copy
 
 import utils
 from utils import Skills
-from get_sd_data import FetchData, Beam, Scan
-from boxcar_filter import Filter
+from get_sd_data import FetchData, Beam, Scan, beam_summary
+from boxcar_filter import Filter, MiddleLatFilter
 from plot_lib import InvestigativePlots as IP, MovieMaker as MM
 
 np.random.seed(0)
+
+
+def printFitRec(rad, dates):
+    """ Print fit Record list """
+    print(" Summary: " , beam_summary(rad, dates[0], dates[0] + dt.timedelta(minutes=10)))
+    return
 
 class Simulate(object):
     """Class to simulate all boxcar filters for duration of the time"""
@@ -246,7 +252,9 @@ class Simulate(object):
         """
         self.fscans = []
         if self.verbose: print("\n Very slow method to boxcar filtering.")
-        #if self.rad_type == "mid": self.slow_filter(self.scans)
+        if self.rad_type == "mid":
+            midlatfilt = MiddleLatFilter(self.rad, self.scans)
+            midlatfilt.doFilter(self.io)
         for i, e in enumerate(self.dates):
             scans = self.scans[i:i+3]
             print(" Date - ", e)
