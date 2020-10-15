@@ -253,7 +253,7 @@ class Simulate(object):
         self.fscans = []
         if self.verbose: print("\n Very slow method to boxcar filtering.")
         if self.rad_type == "mid":
-            midlatfilt = MiddleLatFilter(self.rad, self.scans)
+            midlatfilt = MiddleLatFilter(self.rad, self._org_scans)
             midlatfilt.doFilter(self.io)
         for i, e in enumerate(self.dates):
             scans = self.scans[i:i+3]
@@ -303,6 +303,7 @@ class Simulate(object):
                 drange[1] + dt.timedelta(minutes=3*self.scan_prop["dur"])
         self.io = FetchData(self.rad, drange)
         _, scans = self.io.fetch_data(by="scan", scan_prop=self.scan_prop)
+        self._org_scans = scans
         self.filter = Filter(thresh=self.thresh, pbnd=self.pbnd, pth=self.pth, verbose=self.verbose)
         self.scans = []
         for s in scans:

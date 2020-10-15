@@ -17,6 +17,8 @@ from scipy import stats as st
 from scipy import signal
 from scipy.stats import beta
 import pandas as pd
+from scipy import ndimage
+from sklearn.cluster import DBSCAN
 
 from get_sd_data import Gate, Beam, Scan
 from plot_lib import *
@@ -286,17 +288,20 @@ class BoxCarGate(object):
 class MiddleLatFilter(object):
     """ Class to filter middle latitude radars """
 
-    def __init__(self, rad, scans, thresh=0.2):
+    def __init__(self, rad, scans, eps=2, min_samples=10):
         """
         initialize variables
         
         rad: Radar code
         scans: List of scans
-        thresh: Threshold of the weight matrix
+        eps: Radius of DBSCAN
+        min_samples: min samplese of DBSCAN
         """
         self.rad = rad
         self.scans = scans
-        self.thresh = thresh
+        self.eps = eps
+        self.min_samples = min_samples
+        self.boundaries = {}
         return
 
     def extract_gatelims(self, df):
@@ -309,57 +314,143 @@ class MiddleLatFilter(object):
                 u = df[df.labels==l]
                 if len(u) > 0: glims[l] = [np.min(u.slist) + 1, np.max(u.slist) - 1]
         return glims
-    
-    def doFilter(self, io, window=7, order=1, beams=[]):
+
+    def filter_by_dbscan(self, df, bm):
+        """
+        Do filter by dbscan name
+        """
+        du, sb = df[df.bmnum==bm], [np.nan, np.nan, np.nan]
+        sb[0] = len(self.scans)
+        if bm == "all":
+            sb[1] = "[" + str(int(np.min(df.bmnum))) + "-" + str(int(np.max(df.bmnum))) + "]"
+            sb[2] = len(self.scans) * int((np.max(df.bmnum)-np.min(df.bmnum)+1))
+        else:
+            sb[1] = "[" + str(int(bm)) + "]"
+            sb[2] = len(self.scans)
+        print(" Beam Analysis: ", bm, len(du))
+        rng, eco = np.array(du.groupby(["slist"]).count().reset_index()["slist"]),\
+                np.array(du.groupby(["slist"]).count().reset_index()["p_l"])
+        Rng, Eco = np.arange(np.max(du.slist)+1), np.zeros((np.max(du.slist)+1))
+        for e, r in zip(eco, rng):
+            Eco[Rng.tolist().index(r)] = e
+        eco, Eco = utils.smooth(eco, self.window), utils.smooth(Eco, self.window)
+        glims, labels = {}, []
+        ds = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(du[["slist"]].values)
+        du["labels"] = ds.labels_
+        names = {}
+        for j, r in enumerate(set(ds.labels_)):
+            x = du[du.labels==r]
+            glims[r] = [np.min(x.slist), np.max(x.slist)]
+            names[r] = "C"+str(j)
+            if r >= 0: self.boundaries[bm].append({"peak": Rng[np.min(x.slist) + Eco[np.min(x.slist):np.max(x.slist)].argmax()],
+                "ub": np.max(x.slist), "lb": np.min(x.slist)})
+        print(" Individual clster detected: ", set(du.labels))
+        to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco),
+                "data/outputs/{r}/gate_{bm}_summary.png".format(r=self.rad, bm=bm), sb)
+        return
+
+    def filter_by_SMF(self, df, bm, method=None):
+        """
+        Filter by Simple Minded Filter
+        method: np/ndimage
+        """
+        def local_minima_ndimage(array, min_distance = 1, periodic=False, edges_allowed=True): 
+            """Find all local maxima of the array, separated by at least min_distance."""
+            array = np.asarray(array)
+            cval = 0 
+            if periodic: mode = "wrap"
+            elif edges_allowed: mode = "nearest" 
+            else: mode = "constant" 
+            cval = array.max()+1 
+            min_points = array == ndimage.minimum_filter(array, 1+2*min_distance, mode=mode, cval=cval) 
+            troughs = [indices[min_points] for indices in np.indices(array.shape)][0]
+            if troughs[0] != 0: troughs = np.insert(troughs, 0, 0)
+            if troughs[-1] <= np.max(du.slist) - min_distance: troughs = np.append(troughs, [np.max(du.slist)])
+            troughs[-2] = troughs[-2] + 1
+            return troughs
+
+        def local_maxima_ndimage(array, min_distance = 1, periodic=False, edges_allowed=True):
+            array = np.asarray(array)
+            cval = 0
+            if periodic: mode = "wrap"
+            elif edges_allowed: mode = "nearest"
+            else: mode = "constant"
+            cval = array.max()+1
+            max_points = array == ndimage.maximum_filter(array, 1+2*min_distance, mode=mode, cval=cval)
+            peaks = [indices[max_points] for indices in np.indices(array.shape)][0]
+            return peaks
+
+        def local_minima_np(array):
+            """ Local minima by numpy stats """
+            troughs = signal.argrelmin(eco, order=self.order)[0]
+            if troughs[0] != 0: troughs = np.insert(troughs, 0, 0)
+            if troughs[-1] != np.max(du.slist): troughs = np.append(troughs, [np.max(du.slist)])
+            troughs[-2] = troughs[-2] + 1
+            return troughs
+
+        if bm == "all": du = df.copy()
+        else: du = df[df.bmnum==bm]
+        print(" Beam Analysis: ", bm, len(du))
+        sb = [np.nan, np.nan, np.nan]
+        sb[0] = len(self.scans)
+        if bm == "all": 
+            sb[1] = "[" + str(int(np.min(df.bmnum))) + "-" + str(int(np.max(df.bmnum))) + "]"
+            sb[2] = len(self.scans) * int((np.max(df.bmnum)-np.min(df.bmnum)+1))
+        else: 
+            sb[1] = "[" + str(int(bm)) + "]"
+            sb[2] = len(self.scans)
+        rng, eco = np.array(du.groupby(["slist"]).count().reset_index()["slist"]),\
+                np.array(du.groupby(["slist"]).count().reset_index()["p_l"])
+        glims, labels = {}, []
+        Rng, Eco = np.arange(np.max(du.slist)+1), np.zeros((np.max(du.slist)+1))
+        for e, r in zip(eco, rng):
+            Eco[Rng.tolist().index(r)] = e
+        eco, Eco = utils.smooth(eco, self.window), utils.smooth(Eco, self.window)
+        du["labels"] = [np.nan] * len(du)
+        names = {}
+        if method == "np": troughs = local_minima_np(np.array(eco))
+        else: troughs = local_minima_ndimage(np.array(eco), min_distance=5)
+        peaks = local_maxima_ndimage(np.array(eco), min_distance=5)
+        print(" Gate bounds: ", troughs, peaks)
+        peaks = np.append(peaks, np.median(troughs[-2:]))
+        for r in range(len(troughs)-1):
+            glims[r] = [troughs[r], troughs[r+1]]
+            du["labels"] = np.where((du["slist"]<=troughs[r+1]) & (du["slist"]>=troughs[r]), r, du["labels"])
+            names[r] = "C" + str(r)
+            if r >= 0: self.boundaries[bm].append({"peak": peaks[r],
+                "ub": troughs[r+1], "lb": troughs[r]})
+
+        du["labels"] =  np.where(np.isnan(du["labels"]), -1, du["labels"])
+        print(" Individual clster detected: ", set(du.labels))
+        to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco),
+                "data/outputs/{r}/gate_{bm}_summary.png".format(r=self.rad, bm=bm), sb)
+        return
+
+    def doFilter(self, io, window=11, order=1, beams=range(4,24)):
         """
         Do filter for sub-auroral scatter
         """
-        from sklearn.cluster import DBSCAN
+        self.order = order
+        self.window = window
         df = pd.DataFrame()
-        sb = [np.nan, np.nan]
         for i, fsc in enumerate(self.scans):
             dx = io.convert_to_pandas(fsc.beams, v_params=["p_l", "v", "w_l", "slist"])
             df = df.append(dx)
+        print(" Beam range - ", np.min(df.bmnum), np.max(df.bmnum))
         if beams == None or len(beams) == 0: 
             bm = "all"
-            sb[0], sb[1] = len(self.scans), np.max(df.bmnum) - np.min(df.bmnum) +1
-            rng, eco = np.array(df.groupby(["slist"]).count().reset_index()["slist"]),\
-                    np.array(df.groupby(["slist"]).count().reset_index()["p_l"])
-            glims, labels = {}, []
-            eco = utils.smooth(eco, window)
-            troughs = signal.argrelmin(eco, order=order)[0]
-            df["labels"] = [np.nan] * len(df)
-            names = {}
-            troughs = np.insert(troughs, 0, 0)
-            troughs = np.append(troughs, [np.max(df.slist)])
-            troughs[-2] = troughs[-2] + 1
-            for r in range(len(troughs)-1):
-                glims[r] = [troughs[r], troughs[r+1]]
-                df["labels"] = np.where((df["slist"]<=troughs[r+1]) & (df["slist"]>=troughs[r]), r, df["labels"])
-                names[r] = "C" + str(r)
-            print(" Individual clster detected: ", set(df.labels))
-            to_midlatitude_gate_summary(self.rad, df, glims, names, (rng,eco),
-                    "data/outputs/{r}/gate_{bm}_summary.png".format(r=self.rad, bm=bm), sb)
+            self.boundaries[bm] = []
+            self.filter_by_SMF(df, bm)
         else:
             for bm in beams:
-                sb[0], sb[1] = len(self.scans), 1
-                print(" Beam Analysis: ", bm)
-                du = pd.DataFrame()
-                du = df[df.bmnum==bm]
-                rng, eco = np.array(du.groupby(["slist"]).count().reset_index()["slist"]),\
-                        np.array(du.groupby(["slist"]).count().reset_index()["p_l"])
-                eco = utils.smooth(eco, window)
-                glims, labels = {}, []
-                ds = DBSCAN(eps=2, min_samples=10).fit(du[["slist"]].values)
-                du["labels"] = ds.labels_
-                names = {}
-                for j, r in enumerate(set(ds.labels_)):
-                    x = du[du.labels==r]
-                    glims[r] = [np.min(x.slist), np.max(x.slist)]
-                    names[r] = "C"+str(j)
-                print(" Individual clster detected: ", set(du.labels))
-                to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco),
-                        "data/outputs/{r}/gate_{bm}_summary.png".format(r=self.rad, bm=bm), sb)
+                self.boundaries[bm] = []
+                if bm==15: self.filter_by_SMF(df, bm)
+                else: self.filter_by_dbscan(df, bm)
+        title = "Date: %s [%s-%s] UT | %s"%(df.time.tolist()[0].strftime("%Y-%m-%d"),
+                df.time.tolist()[0].strftime("%H.%M"), df.time.tolist()[-1].strftime("%H.%M"), self.rad.upper())
+        fname = "data/outputs/%s/gate_boundary.png"%(self.rad)
+        beam_gate_boundary_plots(self.boundaries, glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title, 
+                fname=fname)
         return
 
 

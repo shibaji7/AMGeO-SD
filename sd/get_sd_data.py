@@ -191,7 +191,11 @@ class Scan(object):
             for p in s_params:
                 _u[p].extend([getattr(b, p)]*l)
         for name in ["CONV","KDE"]:
-            self.skills[name] = Skills(pd.DataFrame.from_records(_u).values, np.array(labels[name]), name, verbose=verbose)
+            self.skills[name] = np.nan
+            try:
+                self.skills[name] = Skills(pd.DataFrame.from_records(_u).values, np.array(labels[name]), name, verbose=verbose)
+            except: 
+                print(" System exception in 'get_sd_data' while extimating skills.")
         return
 
 
@@ -332,7 +336,7 @@ def beam_summary(rad, start, end):
         """ Calculate scan durations in minutes """
         dx = dx[dx.scan==1]
         dx = dx[dx.bmnum==dx.bmnum.tolist()[0]]
-        sdur = (dx.time.tolist()[1].to_pydatetime() - dx.time.tolist()[0].to_pydatetime()).total_seconds()
+        sdur = (dx.time.tolist()[-1].to_pydatetime() - dx.time.tolist()[-2].to_pydatetime()).total_seconds()
         return int( (sdur+10)/60. )
     def _estimate_themis_beam(sdur, dx):
         """ Estimate themis mode and beam number if any """
@@ -349,6 +353,7 @@ def beam_summary(rad, start, end):
     print(d[cols].head(15))
     to_normal_scan_id(d, key="scan")
     dur = _estimate_scan_duration(d)
+    print(dur)
     themis = _estimate_themis_beam(dur, d)
     d[cols].to_csv("data/{rad}.{dn}.{start}.{end}.csv".format(rad=rad, dn=start.strftime("%Y%m%d"),
         start=start.strftime("%H%M"), end=end.strftime("%H%M")), header=True, index=False)

@@ -16,8 +16,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-import spacepy.plot as splot
-import seaborn as sns
+#import spacepy.plot as splot
+#import seaborn as sns
 import matplotlib.colors as mcolors
 from matplotlib.ticker import MultipleLocator
 
@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 import datetime as dt
 
-splot.style("spacepy_altgrid")
+#splot.style("spacepy_altgrid")
 font = {"family": "serif", "color":  "black", "weight": "normal", "size": 10}
 fonttext = {"family": "serif", "color":  "blue", "weight": "normal", "size": 10}
 
@@ -463,26 +463,26 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
     for j, attr, lab in zip(range(1), attrs, labels):
         ax = axes[j]
         ax.scatter(rand_jitter(df.slist), rand_jitter(df[attr]), color="r", s=1)
-        ax.grid(True)
+        ax.grid(color="gray", linestyle="--", linewidth=0.3)
         ax.set_ylabel(lab, fontdict=font)
         ax.set_xlim(0,110)
-    ax.xaxis.set_minor_locator(MultipleLocator(1))
+    ax.xaxis.set_minor_locator(MultipleLocator(2))
     ax = axes[-3]
-    ax.xaxis.set_minor_locator(MultipleLocator(1))
+    ax.xaxis.set_minor_locator(MultipleLocator(2))
     ax.scatter(df.groupby(["slist"]).count().reset_index()["slist"], df.groupby(["slist"]).count().reset_index()["p_l"], color="k", s=3)
-    ax.grid(True)
+    ax.grid(color="gray", linestyle="--", linewidth=0.3)
     ax.set_ylabel("Count", fontdict=font)
     ax.set_xlim(0,110)
     fonttext["color"] = "k"
     ax = axes[-2]
     ax.scatter(smooth[0], smooth[1], color="k", s=3)
-    ax.xaxis.set_minor_locator(MultipleLocator(1))
-    ax.grid(True)
+    ax.grid(color="gray", linestyle="--", linewidth=0.3)
+    ax.xaxis.set_minor_locator(MultipleLocator(2))
     ax.set_xlim(0,110)
     ax.set_ylabel("<Count>", fontdict=font)
     ax = axes[-1]
-    ax.xaxis.set_minor_locator(MultipleLocator(1))
-    ax.grid(True)
+    ax.xaxis.set_minor_locator(MultipleLocator(2))
+    ax.grid(color="gray", linestyle="--", linewidth=0.3)
     ax.set_xlim(0,110)
     ax.set_xlabel("Gate", fontdict=font)
     ax.set_ylabel(r"$d_{<Count>}$", fontdict=font)
@@ -504,14 +504,15 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
                 ax = axes[j]
                 ax.axvline(x=gate_lims[k][0], color="b", lw=0.6, ls="--")
                 ax.axvline(x=gate_lims[k][1], color="darkgreen", lw=0.6, ls=":")
-                ax.text(np.mean(gate_lims[k])/110, 0.7, names[n],
-                    horizontalalignment="center", verticalalignment="center",
-                    transform=ax.transAxes, fontdict=fonttext)
+                #ax.text(np.mean(gate_lims[k])/110, 0.7, names[n],
+                #    horizontalalignment="center", verticalalignment="center",
+                #    transform=ax.transAxes, fontdict=fonttext)
     beams = sb[1]
     scans = sb[0]
+    count = sb[2]
     fig.suptitle("Rad-%s, %s [%s-%s] UT"%(rad, df.time.tolist()[0].strftime("%Y-%m-%d"), 
         df.time.tolist()[0].strftime("%H.%M"), df.time.tolist()[-1].strftime("%H.%M")) + "\n" + 
-        r"$N_{scans}=%d, N_{beams}=%d, N_{gates}=%d, Count_{max}=%d$"%(scans, beams, 110, scans*beams), size=12)
+        r"$N_{scans}=%d, Beams=%s, N_{gates}=%d$"%(scans, beams, 110), size=12)
     fig.savefig(fname, bbox_inches="tight")
     plt.close()
     fig, axes = plt.subplots(figsize=(21,12), nrows=4, ncols=len(gate_lims.keys()), sharey=True, dpi=150)
@@ -552,4 +553,25 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
         if i==0: ax.set_xlabel("Velocity (m/s)", fontdict=font)
         ax.set_ylabel("Width (m/s)", fontdict=font)
     fig.savefig(fname.replace("png", "pdf"), bbox_inches="tight")
+    return
+
+def beam_gate_boundary_plots(boundaries, glim, blim, title, fname):
+    """ Beam gate boundary plots showing the distribution of clusters """
+    fig, ax = plt.subplots(figsize=(10,6), nrows=1, ncols=1, dpi=120)
+    ax.set_ylabel("Gates", fontdict=font)
+    ax.set_xlabel("Beams", fontdict=font)
+    ax.set_xlim(blim[0]-1, blim[1] + 2)
+    ax.set_ylim(glim[0], glim[1])
+    for b in range(blim[0], blim[1] + 1):
+        ax.axvline(b, lw=0.3, color="gray", ls="--")
+        boundary = boundaries[b]
+        for bnd in boundary:
+            ax.plot([b, b+1], [bnd["lb"], bnd["lb"]], ls="--", color="b", lw=0.5)
+            ax.plot([b, b+1], [bnd["ub"], bnd["ub"]], ls="--", color="g", lw=0.5)
+            ax.scatter([b+0.5], [bnd["peak"]], marker="*", color="k", s=3)
+    ax.axvline(b+1, lw=0.3, color="gray", ls="--")
+    ax.set_title(title)
+    ax.set_xticks(np.arange(blim[0], blim[1] + 1) + 0.5)
+    ax.set_xticklabels(np.arange(blim[0], blim[1] + 1))
+    fig.savefig(fname, bbox_inches="tight")
     return
