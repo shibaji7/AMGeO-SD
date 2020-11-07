@@ -320,14 +320,18 @@ class MiddleLatFilter(object):
         Do filter by dbscan name
         """
         du, sb = df[df.bmnum==bm], [np.nan, np.nan, np.nan]
-        sb[0] = len(self.scans)
+        sb[0] = len(du.groupby("time"))
+        self.gen_summary[bm] = {"bmnum": bm, "v": np.median(du.v), "p": np.median(du.p_l), "w": np.median(du.w_l), 
+                "sound":sb[0], "echo":len(du), "v_mad": st.median_absolute_deviation(du.v), 
+                "p_mad": st.median_absolute_deviation(du.p_l), "w_mad": st.median_absolute_deviation(du.w_l)}
+        xpt = 100./sb[0]
         if bm == "all":
             sb[1] = "[" + str(int(np.min(df.bmnum))) + "-" + str(int(np.max(df.bmnum))) + "]"
             sb[2] = len(self.scans) * int((np.max(df.bmnum)-np.min(df.bmnum)+1))
         else:
             sb[1] = "[" + str(int(bm)) + "]"
             sb[2] = len(self.scans)
-        print(" Beam Analysis: ", bm, len(du))
+        print(" Beam Analysis: ", bm, len(du.groupby("time")))
         rng, eco = np.array(du.groupby(["slist"]).count().reset_index()["slist"]),\
                 np.array(du.groupby(["slist"]).count().reset_index()["p_l"])
         Rng, Eco = np.arange(np.max(du.slist)+1), np.zeros((np.max(du.slist)+1))
@@ -343,7 +347,7 @@ class MiddleLatFilter(object):
             glims[r] = [np.min(x.slist), np.max(x.slist)]
             names[r] = "C"+str(j)
             if r >= 0: self.boundaries[bm].append({"peak": Rng[np.min(x.slist) + Eco[np.min(x.slist):np.max(x.slist)].argmax()],
-                "ub": np.max(x.slist), "lb": np.min(x.slist)})
+                "ub": np.max(x.slist), "lb": np.min(x.slist), "value": np.max(eco)*xpt, "bmnum": bm, "echo": len(x), "sound": sb[0]})
         print(" Individual clster detected: ", set(du.labels))
         to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco),
                 "data/outputs/{r}/gate_{bm}_summary.png".format(r=self.rad, bm=bm), sb)
@@ -390,9 +394,13 @@ class MiddleLatFilter(object):
 
         if bm == "all": du = df.copy()
         else: du = df[df.bmnum==bm]
-        print(" Beam Analysis: ", bm, len(du))
+        print(" Beam Analysis: ", bm, len(du.groupby("time")))
         sb = [np.nan, np.nan, np.nan]
-        sb[0] = len(self.scans)
+        sb[0] = len(du.groupby("time"))
+        self.gen_summary[bm] = {"bmnum": bm, "v": np.median(du.v), "p": np.median(du.p_l), "w": np.median(du.w_l),
+                "sound":sb[0], "echo":len(du), "v_mad": st.median_absolute_deviation(du.v),
+                "p_mad": st.median_absolute_deviation(du.p_l), "w_mad": st.median_absolute_deviation(du.w_l)}
+        xpt = 100./sb[0]
         if bm == "all": 
             sb[1] = "[" + str(int(np.min(df.bmnum))) + "-" + str(int(np.max(df.bmnum))) + "]"
             sb[2] = len(self.scans) * int((np.max(df.bmnum)-np.min(df.bmnum)+1))
@@ -418,7 +426,8 @@ class MiddleLatFilter(object):
             du["labels"] = np.where((du["slist"]<=troughs[r+1]) & (du["slist"]>=troughs[r]), r, du["labels"])
             names[r] = "C" + str(r)
             if r >= 0: self.boundaries[bm].append({"peak": peaks[r],
-                "ub": troughs[r+1], "lb": troughs[r]})
+                "ub": troughs[r+1], "lb": troughs[r], "value": np.max(eco)*xpt, "bmnum": bm, 
+                "echo": len(du[(du["slist"]<=troughs[r+1]) & (du["slist"]>=troughs[r])]), "sound": sb[0]})
 
         du["labels"] =  np.where(np.isnan(du["labels"]), -1, du["labels"])
         print(" Individual clster detected: ", set(du.labels))
@@ -430,6 +439,8 @@ class MiddleLatFilter(object):
         """
         Do filter for sub-auroral scatter
         """
+        self.gen_summary = {}
+        self.clust_idf = {}
         self.order = order
         self.window = window
         df = pd.DataFrame()
@@ -444,15 +455,91 @@ class MiddleLatFilter(object):
         else:
             for bm in beams:
                 self.boundaries[bm] = []
+                self.gen_summary[bm] = {}
                 if bm==15: self.filter_by_SMF(df, bm)
                 else: self.filter_by_dbscan(df, bm)
         title = "Date: %s [%s-%s] UT | %s"%(df.time.tolist()[0].strftime("%Y-%m-%d"),
                 df.time.tolist()[0].strftime("%H.%M"), df.time.tolist()[-1].strftime("%H.%M"), self.rad.upper())
         fname = "data/outputs/%s/gate_boundary.png"%(self.rad)
-        beam_gate_boundary_plots(self.boundaries, glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title, 
+        self.gc = []
+        for x in self.boundaries.keys():
+            for j, m in enumerate(self.boundaries[x]):
+                self.gc.append(m)
+        self.ubeam, self.lbeam = np.max(df.bmnum), np.min(df.bmnum)
+        self.sma_bgspace()
+        self.cluster_identification(df)
+        beam_gate_boundary_plots(self.boundaries, self.clusters, None, 
+                glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
                 fname=fname)
+        beam_gate_boundary_plots(self.boundaries, self.clusters, self.clust_idf,
+                glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
+                fname=fname.replace("gate_boundary", "gate_boundary_id"))
+        general_stats(self.gen_summary, fname="data/outputs/%s/general_stats.png"%(self.rad))
+        for c in self.clusters.keys():
+            cluster = self.clusters[c]
+            fname = "data/outputs/%s/clust_%02d_stats.png"%(self.rad, c)
+            cluster_stats(df, cluster, fname, title+" | Cluster# %02d"%c)
+            individal_cluster_stats(self.clusters[c], df, "data/outputs/%s/ind_clust_%02d_stats.png"%(self.rad, c), 
+                    title+" | Cluster# %02d"%c+"\n"+"Cluster ID: _%s_"%self.clust_idf[c].upper())
         return
 
+    def cluster_identification(self, df, qntl=[0.05,0.95]):
+        """ Idenitify the cluster based on Idenitification """
+        for c in self.clusters.keys():
+            V = []
+            for cls in self.clusters[c]:
+                v = np.array(df[(df.slist>=cls["lb"]) & (df.slist<=cls["ub"]) & (df.bmnum==cls["bmnum"])].v)
+                V.extend(v.tolist())
+            V = np.array(V)
+            l, u = np.quantile(V,qntl[0]), np.quantile(V,qntl[1])
+            Vmin, Vmax = np.min(V[(V>l) & (V<u)]), np.max(V[(V>l) & (V<u)])
+            Vmean, Vmed = np.mean(V[(V>l) & (V<u)]), np.median(V[(V>l) & (V<u)])
+            Vsig = np.std(V[(V>l) & (V<u)])
+            self.clust_idf[c] = "us"
+            if Vmin > -20 and Vmax < 20: self.clust_idf[c] = "gs"
+            elif (Vmin > -50 and Vmax < 50) and (Vmed-Vsig < -20 or Vmed+Vsig > 20): self.clust_idf[c] = "sais"
+        return
+
+    def sma_bgspace(self):
+        """
+        Simple minded algorithm in B.G space
+        """
+        def range_comp(x, y, pcnt=0.7):
+            _cx = False
+            insc = set(x).intersection(y)
+            if len(x) < len(y) and len(insc) >= len(x)*pcnt: _cx = True
+            if len(x) > len(y) and len(insc) >= len(y)*pcnt: _cx = True
+            return _cx
+        def find_adjucent(lst, mxx):
+            mxl = []
+            for l in lst:
+                if l["peak"] >= mxx["lb"] and l["peak"] <= mxx["ub"]: mxl.append(l)
+                elif mxx["peak"] >= l["lb"] and mxx["peak"] <= l["ub"]: mxl.append(l)
+                elif range_comp(range(l["lb"], l["ub"]+1), range(mxx["lb"], mxx["ub"]+1)): mxl.append(l)
+            return mxl
+        def nested_cluster_find(bm, mx, j, case=-1):
+            if bm < self.lbeam and bm > self.ubeam: return
+            else:
+                if (case == -1 and bm >= self.lbeam) or (case == 1 and bm <= self.ubeam):
+                    mxl = find_adjucent(self.boundaries[bm], mx)
+                    for m in mxl:
+                        if m in self.gc:
+                            del self.gc[self.gc.index(m)]
+                            self.clusters[j].append(m)
+                            nested_cluster_find(m["bmnum"] + case, m, j, case)
+                            nested_cluster_find(m["bmnum"] + (-1*case), m, j, (-1*case))
+                return
+        self.clusters = {}
+        j = 0
+        while len(self.gc) > 0:
+            self.clusters[j] = []
+            mx = max(self.gc, key=lambda x:x["value"])
+            self.clusters[j].append(mx)
+            if mx in self.gc: del self.gc[self.gc.index(mx)]
+            nested_cluster_find(mx["bmnum"] - 1, mx, j, case=-1)
+            nested_cluster_find(mx["bmnum"] + 1, mx, j, case=1)
+            j += 1
+        return
 
 
 

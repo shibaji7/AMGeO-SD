@@ -350,10 +350,11 @@ def beam_summary(rad, start, end):
     fd = FetchData(rad, [start, end])
     b, _ = fd.fetch_data()
     d = fd.to_pandas_summary(b)
+    print(" Data source:")
     print(d[cols].head(15))
     to_normal_scan_id(d, key="scan")
     dur = _estimate_scan_duration(d)
-    print(dur)
+    print(" Summary: ", dur)
     themis = _estimate_themis_beam(dur, d)
     d[cols].to_csv("data/{rad}.{dn}.{start}.{end}.csv".format(rad=rad, dn=start.strftime("%Y%m%d"),
         start=start.strftime("%H%M"), end=end.strftime("%H%M")), header=True, index=False)

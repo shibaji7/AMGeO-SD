@@ -457,8 +457,12 @@ def rand_jitter(arr):
 
 def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
     """ Plot gate distribution summary """
-    fig, axes = plt.subplots(figsize=(5,5), nrows=4, ncols=1, sharey="row", dpi=150)
+    fig, axes = plt.subplots(figsize=(5,5), nrows=4, ncols=1, sharey="row", sharex=True, dpi=150)
     attrs = ["p_l"]
+    beams = sb[1]
+    scans = sb[0]
+    count = sb[2]
+    xpt = 100./scans
     labels = ["Power (dB)"]
     for j, attr, lab in zip(range(1), attrs, labels):
         ax = axes[j]
@@ -469,23 +473,23 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
     ax.xaxis.set_minor_locator(MultipleLocator(2))
     ax = axes[-3]
     ax.xaxis.set_minor_locator(MultipleLocator(2))
-    ax.scatter(df.groupby(["slist"]).count().reset_index()["slist"], df.groupby(["slist"]).count().reset_index()["p_l"], color="k", s=3)
+    ax.scatter(df.groupby(["slist"]).count().reset_index()["slist"], xpt*df.groupby(["slist"]).count().reset_index()["p_l"], color="k", s=3)
     ax.grid(color="gray", linestyle="--", linewidth=0.3)
-    ax.set_ylabel("Count", fontdict=font)
+    ax.set_ylabel("%Count", fontdict=font)
     ax.set_xlim(0,110)
     fonttext["color"] = "k"
     ax = axes[-2]
-    ax.scatter(smooth[0], smooth[1], color="k", s=3)
+    ax.scatter(smooth[0], xpt*smooth[1], color="k", s=3)
     ax.grid(color="gray", linestyle="--", linewidth=0.3)
     ax.xaxis.set_minor_locator(MultipleLocator(2))
     ax.set_xlim(0,110)
-    ax.set_ylabel("<Count>", fontdict=font)
+    ax.set_ylabel("<%Count>", fontdict=font)
     ax = axes[-1]
     ax.xaxis.set_minor_locator(MultipleLocator(2))
     ax.grid(color="gray", linestyle="--", linewidth=0.3)
     ax.set_xlim(0,110)
     ax.set_xlabel("Gate", fontdict=font)
-    ax.set_ylabel(r"$d_{<Count>}$", fontdict=font)
+    ax.set_ylabel(r"$d_{<\%Count>}$", fontdict=font)
     ds = pd.DataFrame()
     ds["x"], ds["y"] = smooth[0], smooth[1]
     for k in gate_lims.keys():
@@ -493,7 +497,7 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
         du = ds[(ds.x>=l) & (ds.x<=u)]
         p = np.append(np.diff(du.y), [0])
         p[np.argmax(du.y)] = 0
-        ax.scatter(du.x, p, color="k", s=3)
+        ax.scatter(du.x, xpt*p, color="k", s=3)
     ax.axhline(0, color="b", lw=0.4, ls="--")
     ax.scatter(smooth[0], smooth[1], color="r", s=1, alpha=.6)
     ax.scatter(ds.x, ds.y, color="b", s=0.6, alpha=.5)
@@ -507,12 +511,9 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
                 #ax.text(np.mean(gate_lims[k])/110, 0.7, names[n],
                 #    horizontalalignment="center", verticalalignment="center",
                 #    transform=ax.transAxes, fontdict=fonttext)
-    beams = sb[1]
-    scans = sb[0]
-    count = sb[2]
     fig.suptitle("Rad-%s, %s [%s-%s] UT"%(rad, df.time.tolist()[0].strftime("%Y-%m-%d"), 
         df.time.tolist()[0].strftime("%H.%M"), df.time.tolist()[-1].strftime("%H.%M")) + "\n" + 
-        r"$N_{scans}=%d, Beams=%s, N_{gates}=%d$"%(scans, beams, 110), size=12)
+        r"$Beams=%s, N_{sounds}=%d, N_{gates}=%d$"%(beams, scans, 110), size=12)
     fig.savefig(fname, bbox_inches="tight")
     plt.close()
     fig, axes = plt.subplots(figsize=(21,12), nrows=4, ncols=len(gate_lims.keys()), sharey=True, dpi=150)
@@ -555,9 +556,9 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
     fig.savefig(fname.replace("png", "pdf"), bbox_inches="tight")
     return
 
-def beam_gate_boundary_plots(boundaries, glim, blim, title, fname):
+def beam_gate_boundary_plots(boundaries, clusters, clust_idf, glim, blim, title, fname):
     """ Beam gate boundary plots showing the distribution of clusters """
-    fig, ax = plt.subplots(figsize=(10,6), nrows=1, ncols=1, dpi=120)
+    fig, ax = plt.subplots(figsize=(6,4), nrows=1, ncols=1, dpi=240)
     ax.set_ylabel("Gates", fontdict=font)
     ax.set_xlabel("Beams", fontdict=font)
     ax.set_xlim(blim[0]-1, blim[1] + 2)
@@ -568,10 +569,196 @@ def beam_gate_boundary_plots(boundaries, glim, blim, title, fname):
         for bnd in boundary:
             ax.plot([b, b+1], [bnd["lb"], bnd["lb"]], ls="--", color="b", lw=0.5)
             ax.plot([b, b+1], [bnd["ub"], bnd["ub"]], ls="--", color="g", lw=0.5)
-            ax.scatter([b+0.5], [bnd["peak"]], marker="*", color="k", s=3)
+            #ax.scatter([b+0.5], [bnd["peak"]], marker="*", color="k", s=3)
+    for x in clusters.keys():
+        C = clusters[x]
+        for _c in C: 
+            if clust_idf is None: ax.text(_c["bmnum"]+(1./3.), (_c["ub"]+_c["lb"])/2, "%02d"%int(x),
+                    horizontalalignment="center", verticalalignment="center",fontdict=fonttext)
+            else: ax.text(_c["bmnum"]+(1./3.), (_c["ub"]+_c["lb"])/2, clust_idf[x],
+                    horizontalalignment="center", verticalalignment="center",fontdict=fonttext)
     ax.axvline(b+1, lw=0.3, color="gray", ls="--")
     ax.set_title(title)
     ax.set_xticks(np.arange(blim[0], blim[1] + 1) + 0.5)
     ax.set_xticklabels(np.arange(blim[0], blim[1] + 1))
+    fig.savefig(fname, bbox_inches="tight")
+    return
+
+def cluster_stats(df, cluster, fname, title):
+    fig, axes = plt.subplots(figsize=(4,8), nrows=3, ncols=1, dpi=120, sharey=True)
+    v, w, p = [], [], []
+    for c in cluster:
+        v.extend(df[(df.bmnum==c["bmnum"]) & (df.slist>=c["lb"]) & (df.slist>=c["lb"])].v.tolist())
+        w.extend(df[(df.bmnum==c["bmnum"]) & (df.slist>=c["lb"]) & (df.slist>=c["lb"])].w_l.tolist())
+        p.extend(df[(df.bmnum==c["bmnum"]) & (df.slist>=c["lb"]) & (df.slist>=c["lb"])].p_l.tolist())
+    ax = axes[0]
+    v, w, p = np.array(v), np.array(w), np.array(p)
+    v[v<-1000] = -1000
+    v[v>1000] = 1000
+    l, u = np.quantile(v,0.1), np.quantile(v,0.9)
+    ax.axvline(np.sign(l)*np.log10(abs(l)), ls="--", lw=1., color="r")
+    ax.axvline(np.sign(u)*np.log10(abs(u)), ls="--", lw=1., color="r")
+    ax.hist(np.sign(v)*np.log10(abs(v)), bins=np.linspace(-3,3,101), histtype="step", density=False)
+    ax.set_ylabel("Counts")
+    ax.set_xlabel(r"V, $ms^{-1}$")
+    ax.set_xlim([-3,3])
+    ax.set_xticklabels([-1000,-100,-10,1,10,100,1000])
+    ax.text(0.7, 0.7, r"$V_{\mu}$=%.1f, $\hat{V}$=%.1f"%(np.mean(v[(v>l) & (v<u)]), np.median(v[(v>l) & (v<u)])) + "\n"\
+            + r"$V_{max}$=%.1f, $V_{min}$=%.1f"%(np.max(v[(v>l) & (v<u)]), np.min(v[(v>l) & (v<u)])) + "\n"\
+            + r"$V_{\sigma}$=%.1f, n=%d"%(np.std(v[(v>l) & (v<u)]),len(v[(v>l) & (v<u)])),
+            horizontalalignment="center", verticalalignment="center", transform=ax.transAxes, fontdict={"size":8})
+    ax = axes[1]
+    w[w>100]=100
+    w[w<-100] = 100
+    l, u = np.quantile(w,0.1), np.quantile(w,0.9)
+    ax.axvline(l, ls="--", lw=1., color="r")
+    ax.axvline(u, ls="--", lw=1., color="r")
+    ax.hist(w, bins=range(-100,100,1), histtype="step", density=False)
+    ax.set_xlabel(r"W, $ms^{-1}$")
+    ax.set_xlim([-100,100])
+    ax.set_ylabel("Counts")
+    ax.text(0.75, 0.8, r"$W_{\mu}$=%.1f, $\hat{W}$=%.1f"%(np.mean(w[(w>l) & (w<u)]), np.median(w[(w>l) & (w<u)])) + "\n"\
+            + r"$W_{max}$=%.1f, $W_{min}$=%.1f"%(np.max(w[(w>l) & (w<u)]), np.min(w[(w>l) & (w<u)])) + "\n"\
+            + r"$W_{\sigma}$=%.1f, n=%d"%(np.std(w[(w>l) & (w<u)]),len(w[(w>l) & (w<u)])),
+            horizontalalignment="center", verticalalignment="center", transform=ax.transAxes, fontdict={"size":8})
+    ax = axes[2]
+    p[p>30]=30
+    l, u = np.quantile(p,0.1), np.quantile(p,0.9)
+    ax.axvline(l, ls="--", lw=1., color="r")
+    ax.axvline(u, ls="--", lw=1., color="r")
+    ax.hist(p, bins=range(0,30,1), histtype="step", density=False)
+    ax.set_xlabel(r"P, $dB$")
+    ax.set_xlim([0,30])
+    ax.set_ylabel("Counts")
+    ax.text(0.75, 0.8, r"$P_{\mu}$=%.1f, $\hat{P}$=%.1f"%(np.mean(p[(p>l) & (p<u)]), np.median(p[(p>l) & (p<u)])) + "\n"\
+            + r"$P_{max}$=%.1f, $P_{min}$=%.1f"%(np.max(p[(p>l) & (p<u)]), np.min(p[(p>l) & (p<u)])) + "\n"\
+            + r"$P_{\sigma}$=%.1f, n=%d"%(np.std(p[(p>l) & (p<u)]),len(p[(p>l) & (p<u)])),
+            horizontalalignment="center", verticalalignment="center", transform=ax.transAxes, fontdict={"size":8})
+    fig.suptitle(title)
+    fig.subplots_adjust(hspace=0.5)
+    fig.savefig(fname, bbox_inches="tight")
+    return
+
+def general_stats(g_stats, fname):
+    fig, axes = plt.subplots(figsize=(6,5), nrows=2, ncols=1, dpi=120, sharex=True)
+    ax = axes[0]
+    width=0.2
+    df = pd.DataFrame.from_records(list(g_stats.values()))
+    ax.bar(df.bmnum-width, df.sound, width=0.3, color="r", label="S")
+    ax.set_ylabel(r"$N_{sounds}$", fontdict=font)
+    ax.legend(loc=2)
+    ax = ax.twinx()
+    ax.bar(df.bmnum+width, df.echo, width=0.3, color="b", label="E")
+    ax.set_ylabel(r"$N_{echo}$", fontdict=font)
+    ax.set_xlabel("Beams", fontdict=font)
+    ax.set_xticks(df.bmnum)
+    ax.legend(loc=1)
+
+    ax = axes[1]
+    ax.errorbar(df.bmnum, df.v, yerr=df.v_mad, color="r", elinewidth=2.5, ecolor="r", fmt="o", ls="None", label="V")
+    ax.errorbar(df.bmnum, df.w, yerr=df.w_mad, color="b", elinewidth=1.5, ecolor="b", fmt="o", ls="None", label="W")
+    ax.errorbar(df.bmnum, df.p, yerr=df.p_mad, color="k", elinewidth=0.5, ecolor="k", fmt="o", ls="None", label="P")
+    ax.set_ylim(-20, 40)
+    ax.set_ylabel(r"$V_{med},W_{med},P_{med}$", fontdict=font)
+    ax.set_xlabel("Beams", fontdict=font)
+    ax.set_xticks(df.bmnum)
+    ax.legend(loc=1)
+
+    fig.subplots_adjust(hspace=0.1)
+    fig.savefig(fname, bbox_inches="tight")
+    return
+
+
+def individal_cluster_stats(cluster, df, fname, title):
+    fig = plt.figure(figsize=(8,12), dpi=120)
+    V = []
+    vbbox, vbox = {}, []
+    vecho, vsound, echo, sound = {}, {}, [], []
+    beams = []
+    for c in cluster:
+        v = np.array(df[(df.slist>=c["lb"]) & (df.slist<=c["ub"]) & (df.bmnum==c["bmnum"])].v)
+        V.extend(v.tolist())
+        v[v<-1000] = -1000
+        v[v>1000] = 1000
+        if c["bmnum"] not in vbbox.keys(): 
+            vbbox[c["bmnum"]] = v.tolist()
+            vecho[c["bmnum"]] = c["echo"]
+            vsound[c["bmnum"]] = c["sound"]
+        else: 
+            vbbox[c["bmnum"]].extend(v.tolist())
+            vecho[c["bmnum"]] += c["echo"]
+            #vsound[c["bmnum"]] += c["sound"]
+    beams = sorted(vbbox.keys())
+    avbox = []
+    for b in beams:
+        if b!=15: avbox.append(vbbox[b])
+        vbox.append(vbbox[b])
+        echo.append(vecho[b])
+        sound.append(vsound[b])
+    from scipy import stats
+    pval = -1.
+    if len(vbox) > 1: 
+        H, pval = stats.f_oneway(*avbox)
+        print(H,pval)
+    ax = plt.subplot2grid((4, 2), (0, 1), colspan=1)
+    V = np.array(V)
+    V[V<-1000] = -1000
+    V[V>1000] = 1000
+    l, u = np.quantile(V,0.05), np.quantile(V,0.95)
+    ax.axvline(np.sign(l)*np.log10(abs(l)), ls="--", lw=1., color="r")
+    ax.axvline(np.sign(u)*np.log10(abs(u)), ls="--", lw=1., color="r")
+    ax.hist(np.sign(V)*np.log10(abs(V)), bins=np.linspace(-3,3,101), histtype="step", density=False)
+    ax.text(0.7, 0.8, r"$V_{min}$=%.1f, $V_{max}$=%.1f"%(np.min(V[(V>l) & (V<u)]), np.max(V[(V>l) & (V<u)])) + "\n"\
+            + r"$V_{\mu}$=%.1f, $\hat{V}$=%.1f"%(np.mean(V[(V>l) & (V<u)]), np.median(V[(V>l) & (V<u)])) + "\n"\
+            + r"$V_{\sigma}$=%.1f, n=%d"%(np.std(V[(V>l) & (V<u)]),len(V[(V>l) & (V<u)])),
+            horizontalalignment="center", verticalalignment="center", transform=ax.transAxes, fontdict={"size":8})
+    ax.set_xlabel(r"V, $ms^{-1}$", fontdict=font)
+    ax.set_yticklabels([])
+    ax.set_xlim([-3,3])
+    ax.set_xticklabels([-1000,-100,-10,1,10,100,1000])
+
+    ax = plt.subplot2grid((4, 2), (0, 0), colspan=1)
+    ax.hist(np.sign(V)*np.log10(abs(V)), bins=np.linspace(-3,3,101), histtype="step", density=False)
+    ax.text(0.7, 0.8, r"$V_{min}$=%.1f, $V_{max}$=%.1f"%(np.min(V), np.max(V)) + "\n"\
+            + r"$V_{\mu}$=%.1f, $\hat{V}$=%.1f"%(np.mean(V), np.median(V)) + "\n"\
+            + r"$V_{\sigma}$=%.1f, n=%d"%(np.std(V),len(V)),
+            horizontalalignment="center", verticalalignment="center", transform=ax.transAxes, fontdict={"size":8})
+    ax.set_ylabel("Counts", fontdict=font)
+    ax.set_xlabel(r"V, $ms^{-1}$", fontdict=font)
+    ax.set_xlim([-3,3])
+    ax.set_xticklabels([-1000,-100,-10,1,10,100,1000])
+    
+    ax = plt.subplot2grid((4, 2), (1, 0), colspan=2)
+    ax.boxplot(vbox, flierprops = dict(marker="o", markerfacecolor="none", markersize=0.8, linestyle="none"))
+    ax.set_ylim(-100,100)
+    ax.set_xlabel(r"Beams", fontdict=font)
+    ax.set_ylabel(r"V, $ms^{-1}$", fontdict=font)
+    ax.set_xticklabels(beams)
+    ax.text(1.05,0.5, "p-val=%.2f"%pval, horizontalalignment="center", verticalalignment="center",
+            transform=ax.transAxes, fontdict={"size":10}, rotation=90)
+    ax.axhline(0, ls="--", lw=0.5, color="k")
+    fig.suptitle(title, y=0.92)
+
+    ax = plt.subplot2grid((4, 2), (2, 0), colspan=2)
+    ax.boxplot(vbox, flierprops = dict(marker="o", markerfacecolor="none", markersize=0.8, linestyle="none"),
+            showbox=False, showcaps=False)
+    ax.set_xticklabels(beams)
+    ax.axhline(0, ls="--", lw=0.5, color="k")
+    ax.set_xlabel(r"Beams", fontdict=font)
+    ax.set_ylabel(r"V, $ms^{-1}$", fontdict=font)
+
+    ax = plt.subplot2grid((4, 2), (3, 0), colspan=2)
+    width=0.2
+    ax.bar(np.array(beams)-width, sound, width=0.3, color="r", label="S")
+    ax.set_ylabel(r"$N_{sounds}$", fontdict=font)
+    ax.set_xlabel("Beams", fontdict=font)
+    ax.legend(loc=2)
+    ax = ax.twinx()
+    ax.bar(np.array(beams)+width, echo, width=0.3, color="b", label="E")
+    ax.set_ylabel(r"$N_{echo}$", fontdict=font)
+    ax.set_xlabel("Beams", fontdict=font)
+    ax.set_xticks(beams)
+    ax.legend(loc=1)
+    fig.subplots_adjust(hspace=0.2, wspace=0.2)
     fig.savefig(fname, bbox_inches="tight")
     return
