@@ -24,7 +24,7 @@ import utils
 from utils import Skills
 from get_sd_data import FetchData, Beam, Scan, beam_summary
 from boxcar_filter import Filter, MiddleLatFilter
-from plot_lib import InvestigativePlots as IP, MovieMaker as MM
+from plot_lib import InvestigativePlots as IP, MovieMaker as MM, FoV
 
 np.random.seed(0)
 
@@ -210,55 +210,24 @@ class Simulate(object):
         os.system("gzip " + fname)
         return
 
-    def slow_filter(self, fscans):
-        """
-        Do filter for sub-auroral scatter
-        """
-        df = pd.DataFrame()
-        from sklearn.cluster import DBSCAN
-        sid = []
-        for i, fsc in enumerate(fscans):
-            dx = self.io.convert_to_pandas(fsc.beams, v_params=["v", "w_l", "slist"])
-            df = df.append(dx)
-            sid.extend([i]*len(dx))
-        df["sid"] = sid
-        clustering = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(df[["bmnum","slist"]].values)
-        df["labels"] = clustering.labels_
-        df["gflg"] = [np.nan] * len(clustering.labels_)
-        #for l in set(clustering.labels_):
-            #u = df[df.labels==l]
-            #v, w = np.array(u.v), np.array(u.w_l)
-            #gflg = ( (w-(50-(0.7*(v+5)**2))) < 0 ).astype(int)
-            #if np.abs(np.median(v)) < 50: gflg = ( (w-(50-(0.7*(v+5)**2))) < 0 ).astype(int)
-            #else: gflg = [0]*len(v)
-            #df.loc[df.labels==l, "gflg"] = gflg
-            #df.loc[df.labels==l, "gflg"] = max(set(gflg), key=gflg.tolist().count)
-        for i, fsc in enumerate(fscans):
-            dx = df[df.sid==i]
-            for l in set(clustering.labels_):
-                u = dx[dx.labels==l]
-                if len(u) > 0:
-                    v, w = np.array(u.v), np.array(u.w_l)
-                    gflg = ( (w-(50-(0.7*(v+5)**2))) < 0 ).astype(int)
-                    dx.loc[dx.labels==l, "gflg"] = max(set(gflg), key=gflg.tolist().count)
-            for b in fsc.beams:
-                b.gsflg[3] = np.array(dx[dx.bmnum==b.bmnum].gflg)
-        self.gflg_type = 3
-        return
-
     def _dofilter(self):
         """
         Do filtering for all scan
         """
+        fov = FoV(self.rad, self.dates[:3])
+        fov.box(self.io.convert_to_fov_plotdata(self.scans[:3]))
         self.fscans = []
         if self.verbose: print("\n Very slow method to boxcar filtering.")
         if self.rad_type == "mid":
-            midlatfilt = MiddleLatFilter(self.rad, self._org_scans)
-            midlatfilt.doFilter(self.io)
+            #midlatfilt = MiddleLatFilter(self.rad, self._org_scans)
+            #midlatfilt.doFilter(self.io)
+            pass
         for i, e in enumerate(self.dates):
             scans = self.scans[i:i+3]
             print(" Date - ", e)
             self.fscans.append(self.filter.doFilter(scans, gflg_type=self.gflg_type))
+        fov.box(self.io.convert_to_fov_plotdata(self.fscans[:3], v_params=["v", "w_l", "p_l", "gflg_kde"]), 
+                dtype="fitacf++", fname="test2.png",gflg_key="gflg_kde")
         return
 
     def _make_movie(self):

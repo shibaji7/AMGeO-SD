@@ -762,3 +762,40 @@ def individal_cluster_stats(cluster, df, fname, title):
     fig.subplots_adjust(hspace=0.2, wspace=0.2)
     fig.savefig(fname, bbox_inches="tight")
     return
+
+class FoV(object):
+    import sys
+    sys.path.append("../darn_tools/")
+    sys.path.append("../darn_tools/utils/")
+    import plot_utils
+    
+    def __init__(self, rad, dates):
+        self.rad = rad
+        self.dates = dates
+        return
+    
+    def box(self, dlist, dtype="fitacf", fname= None, gflg_key="gflg"):
+        import cartopy
+        self.dtype = dtype
+        fig = plt.figure(figsize=(12, 5), dpi=180)
+        for i in range(3):
+            ax = fig.add_subplot(131+i, projection="sdfovcarto",\
+                                 coords="geo", rad=self.rad, plot_date=self.dates[i])
+            ax.coastlines(lw=0.1, alpha=0.5)
+            ax.overlay_radar()
+            ax.overlay_fov(maxGate=50)
+            if i != 0: 
+                ax.grid_on(draw_labels=[False, False, False, False])
+                ax.enum(bounds=[-110, -70, 45, 85],dtype=self.dtype)
+            else:
+                ax.grid_on(draw_labels=[False, False, True, True])
+                ax.enum(bounds=[-110, -70, 45, 85], text_coord=True,dtype=self.dtype)
+            if i==2: ax.overlay_fitacfp_radar_data(dlist[i], add_colorbar=True, gflg_key=gflg_key,
+                                                   colorbar_label=r"Velocity, $ms^{-1}$",
+                                                   p_max=500, p_min=-500, p_step=50)
+            else: ax.overlay_fitacfp_radar_data(dlist[i], add_colorbar=False, gflg_key = gflg_key,
+                                               p_max=500, p_min=-500, p_step=50)
+        fig.subplots_adjust(wspace=0.2, hspace=0.1)
+        if fname is None: fig.savefig("test.png", bbox_inches="tight")
+        else: fig.savefig(fname, bbox_inches="tight")
+        return

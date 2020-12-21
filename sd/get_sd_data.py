@@ -16,7 +16,7 @@ import pandas as pd
 import datetime as dt
 import glob
 import bz2
-import pydarn
+import pydarnio as pydarn
 import configparser
 
 from utils import Skills
@@ -329,6 +329,20 @@ class FetchData(object):
             data += records
         if by is not None: data = self._parse_data(data, s_params, v_params, by, scan_prop)
         return data
+    
+    def convert_to_fov_plotdata(self, scans, v_params=["v", "w_l", "p_l", "gflg"]):
+        """ Convert to list of dictionary with "beam", "gate" and vectored params """
+        dlist = []
+        for i, scan in enumerate(scans):
+            _dict_ = {k: [] for k in v_params + ["bmnum", "slist"]}
+            for b in scan.beams:
+                l = len(b.slist)
+                if l > 0:
+                    _dict_["bmnum"].append([b.bmnum]*l)
+                    _dict_["slist"].append(np.array(b.slist).tolist())
+                    for vp in v_params: _dict_[vp].append(np.array(getattr(b, vp)).tolist())
+            dlist.append(_dict_)
+        return dlist
 
 def beam_summary(rad, start, end):
     """ Produce beam summary for beam sounding and scann mode """
