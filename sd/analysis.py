@@ -253,8 +253,9 @@ class Simulate(object):
         self.fscans = []
         if self.verbose: print("\n Very slow method to boxcar filtering.")
         if self.rad_type == "mid":
-            midlatfilt = MiddleLatFilter(self.rad, self._org_scans)
-            midlatfilt.doFilter(self.io)
+            #midlatfilt = MiddleLatFilter(self.rad, self._org_scans)
+            #midlatfilt.doFilter(self.io)
+            pass
         for i, e in enumerate(self.dates):
             scans = self.scans[i:i+3]
             print(" Date - ", e)
