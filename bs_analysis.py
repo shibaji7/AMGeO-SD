@@ -115,21 +115,23 @@ fig.savefig("data/outputs/{rad}/{sim_id}/histogram.png".format(rad=rad, sim_id=s
 plt.close()
 
 ## 2D Scatter Plots
-fig, ax = plt.subplots(figsize=(5,5), nrows=1, ncols=1, sharey="row", dpi=150)
+fig, ax = plt.subplots(figsize=(3,3), nrows=1, ncols=1, sharey="row", dpi=120)
 colors = ["blue", "red", "green", "black", "magenta"]
+colors = ["red", "red", "blue", "red", "blue"]
 for i, (rng, col) in enumerate(zip(slist_ranges, colors)):
     u = df[(df.slist >= rng[0]) & (df.slist < rng[1])]
-    ax.scatter(u.v, u.w, s=2, c=col, label="Range(%d,%d)"%rng)
+    ax.scatter(u.v, u.w, s=2, c=col, alpha=0.7)
+    #ax.scatter(u.v, u.w, s=2, c=col, label="Range(%d,%d)"%rng)
 v = np.linspace(-30,30,100)
-w = 50-(0.7*(v+5)**2)
-ax.plot(v,w,lw=2,color="gray")
-ax.legend(scatterpoints=3, ncol=1, fontsize=10, frameon=True)
+w = 40-(0.2*(v+5)**2)
+ax.plot(v,w,lw=1.2,color="gray")
+#ax.legend(scatterpoints=3, ncol=1, fontsize=10, frameon=True)
 ax.grid(True)
 ax.set_xlim(-50,50)
 ax.set_ylim(0,50)
-ax.set_ylabel("Width [m/s]")
-ax.set_xlabel("Velocity [m/s]")
-ax.set_title("Date- %s, Dur- (%s, %s) UT, Rad- %s"%(dtu,start,end,rad.upper()))
+ax.set_ylabel("Width [m/s]", fontdict={"size":10})
+ax.set_xlabel("Velocity [m/s]", fontdict={"size":10})
+#ax.set_title("Date- %s, Dur- (%s, %s) UT, Rad- %s"%(dtu,start,end,rad.upper()))
 fig.savefig("data/outputs/{rad}/{sim_id}/sctr2D.png".format(rad=rad, sim_id=sim_id), bbox_inches="tight")
 plt.close()
 
