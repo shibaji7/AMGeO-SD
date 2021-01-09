@@ -27,8 +27,7 @@ import utils
 from fit_records import fetch_print_fit_rec
 from analysis import Simulate
 
-def run_fitacf_amgeo_simulation(rad, start, end, dofilter, save, gflg_type, gflg_cast, clear, 
-                                verbose, thresh, pth, lth, uth, out_dir, ftype):
+def run_fitacf_amgeo_simulation(rad, start, end, gflg_cast, _dict_):
     """
     Method is dedicated to run fitacf++ simulation
     
@@ -64,10 +63,7 @@ def run_fitacf_amgeo_simulation(rad, start, end, dofilter, save, gflg_type, gflg
     if gflg_cast not in gflg_cast_types: 
         logger.error(f"gflg_cast has to be in {gflg_cast_types}")
         raise Exception(f"gflg_cast has to be in {gflg_cast_types}")
-    scan_info = fetch_print_fit_rec(rad, start, start + dt.timedelta(minutes=5), file_type=ftype)
-    _dict_ = {"dofilter": dofilter, "save": save, "gflg_type": gflg_type, "gflg_cast": gflg_cast,
-              "clear": clear, "thresh": thresh, "pth": pth, "lth": lth, "uth": uth, "out_dir": out_dir,
-             "ftype": ftype}
+    scan_info = fetch_print_fit_rec(rad, start, start + dt.timedelta(minutes=5), file_type=file_type=_dict_["ftype"])
     sim = Simulate(rad, [start, end], scan_info, verbose, _dict_)
     return sim.out, scan_info
 
@@ -100,12 +96,11 @@ if __name__ == "__main__":
             print("     ", k, "->", vars(args)[k])
             _dic_[k] = vars(args)[k]
     out_dir = utils.build_base_folder_structure(args.rad, args.sim_id)
-    _o, scan_info = run_fitacf_amgeo_simulation(args.rad, args.start, args.end, args.dofilter, args.save, 
-                                                args.gflg_type, args.gflg_cast, args.clear, args.verbose,
-                                                args.thresh, args.pth, args.lth, args.uth, out_dir, args.ftype)
+    _o, scan_info = run_fitacf_amgeo_simulation(args.rad, args.start, args.end, args.gflg_cast, _dic_)
     logger.info(f"Simulation output from fitacf_amgeo.__main__\n{json.dumps(_o, sort_keys=True, indent=4)}")
     _dic_["out_dir"] = out_dir
     _dic_.update(scan_info)
     _dic_.update(_o)
+    _dic_["__func__"] = "fitacf_amgeo"
     utils.save_cmd(sys.argv, _dic_, out_dir)
     pass

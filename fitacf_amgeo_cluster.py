@@ -28,8 +28,7 @@ from fit_records import fetch_print_fit_rec
 from get_fit_data import FetchData
 from clustering_algo import BeamGate, TimeFilter
 
-def run_fitacf_amgeo_clustering(rad, start, end, dofilter, save, gflg_type, gflg_cast, clear, 
-                                verbose, thresh, pth, lth, uth, out_dir, ftype):
+def run_fitacf_amgeo_clustering(rad, start, end, gflg_cast, _dict_):
     """
     Method is dedicated to run fitacf++ simulation
     
@@ -65,14 +64,11 @@ def run_fitacf_amgeo_clustering(rad, start, end, dofilter, save, gflg_type, gflg
     if gflg_cast not in gflg_cast_types: 
         logger.error(f"gflg_cast has to be in {gflg_cast_types}")
         raise Exception(f"gflg_cast has to be in {gflg_cast_types}")
-    scan_info = fetch_print_fit_rec(rad, start, start + dt.timedelta(minutes=5), file_type=ftype)
-    _dict_ = {"dofilter": dofilter, "save": save, "gflg_type": gflg_type, "gflg_cast": gflg_cast,
-              "clear": clear, "thresh": thresh, "pth": pth, "lth": lth, "uth": uth, "out_dir": out_dir,
-             "ftype": ftype}
-    io = FetchData( rad, [start, end], ftype=ftype, verbose=verbose)
+    scan_info = fetch_print_fit_rec(rad, start, start + dt.timedelta(minutes=5), file_type=_dict_["ftype"])
+    io = FetchData( rad, [start, end], ftype=_dict_["ftype"], verbose=_dict_["verbose"])
     _, scans = io.fetch_data(by="scan", scan_prop=scan_info)
     df = io.scans_to_pandas(scans)
-    bgc = BeamGate(rad, scans)
+    bgc = BeamGate(rad, scans, _dict_=_dict_)
     bgc.doFilter(io)
     return {}, scan_info
 
@@ -80,20 +76,20 @@ def run_fitacf_amgeo_clustering(rad, start, end, dofilter, save, gflg_type, gflg
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--rad", default="bks", help="SuperDARN radar code (default bks)")
-    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,17,3), help="Start date (default 2015-03-17T03)", 
+    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,17,4), help="Start date (default 2015-03-17T03)", 
             type=prs.parse)
-    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,17,3,30), help="End date (default 2015-03-17T03:30)", 
+    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,17,4,30), help="End date (default 2015-03-17T03:30)", 
             type=prs.parse)
     parser.add_argument("-f", "--dofilter", action="store_false", help="Do filtering (default True)")
     parser.add_argument("-sv", "--save", action="store_false", help="Save data to file (defult True)")
-    parser.add_argument("-gft", "--gflg_type", type=int, default=-1, help="Ground scatter flag estimation type (default -1)")
+    parser.add_argument("-gft", "--gflg_type", type=int, default=1, help="Ground scatter flag estimation type (default 2)")
     parser.add_argument("-gct", "--gflg_cast", default="gflg_conv", help="Ground scatter flag final plot type (gflg_conv)")
     parser.add_argument("-c", "--clear", action="store_true", help="Clear pervious stored files (default False)")
     parser.add_argument("-v", "--verbose", action="store_false", help="Increase output verbosity (default True)")
     parser.add_argument("-th", "--thresh", type=float, default=.7, help="Threshold value for filtering (default 0.7)")
-    parser.add_argument("-pth", "--pth", type=float, default=.25, help="Probability threshold for KDE (default 0.25)")
-    parser.add_argument("-lth", "--lth", type=float, default=.2, help="Probability cut-off for IS (default 0.2)")
-    parser.add_argument("-uth", "--uth", type=float, default=.8, help="Probability cut-off for GS (default 0.8)")
+    parser.add_argument("-pth", "--pth", type=float, default=.5, help="Probability threshold for KDE (default 0.5)")
+    parser.add_argument("-lth", "--lth", type=float, default=1./3., help="Probability cut-off for IS")
+    parser.add_argument("-uth", "--uth", type=float, default=2./3., help="Probability cut-off for GS")
     parser.add_argument("-sid", "--sim_id", default="L100", help="Simulation ID, need to store data into this folder (default L100)")
     parser.add_argument("-ftype", "--ftype", default="fitacf", help="FitACF file type (futacf, fitacf3)")
     args = parser.parse_args()
@@ -105,12 +101,11 @@ if __name__ == "__main__":
             print("     ", k, "->", vars(args)[k])
             _dic_[k] = vars(args)[k]
     out_dir = utils.build_base_folder_structure(args.rad, args.sim_id)
-    _o, scan_info = run_fitacf_amgeo_clustering(args.rad, args.start, args.end, args.dofilter, args.save, 
-                                                args.gflg_type, args.gflg_cast, args.clear, args.verbose,
-                                                args.thresh, args.pth, args.lth, args.uth, out_dir, args.ftype)
+    _o, scan_info = run_fitacf_amgeo_clustering(args.rad, args.start, args.end, args.gflg_cast, _dic_)
     logger.info(f"Simulation output from fitacf_amgeo_cluster.__main__\n{json.dumps(_o, sort_keys=True, indent=4)}")
     _dic_["out_dir"] = out_dir
     _dic_.update(scan_info)
     _dic_.update(_o)
+    _dic_["__func__"] = "fitacf_amgeo_cluster"
     utils.save_cmd(sys.argv, _dic_, out_dir)
     pass

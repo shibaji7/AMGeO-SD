@@ -558,9 +558,11 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
     fig.savefig(fname.replace("png", "pdf"), bbox_inches="tight")
     return
 
-def beam_gate_boundary_plots(boundaries, clusters, clust_idf, glim, blim, title, fname):
+def beam_gate_boundary_plots(boundaries, clusters, clust_idf, glim, blim, title, fname, gflg_type=-1):
     """ Beam gate boundary plots showing the distribution of clusters """
-    fig, ax = plt.subplots(figsize=(6,4), nrows=1, ncols=1, dpi=240)
+    GS_CASES = ["Sudden [2004]", "Blanchard [2006]", "Blanchard [2009]"]
+    if gflg_type>=0: case = GS_CASES[gflg_type]
+    fig, ax = plt.subplots(figsize=(6,4), nrows=1, ncols=1, dpi=180)
     ax.set_ylabel("Gates", fontdict=font)
     ax.set_xlabel("Beams", fontdict=font)
     ax.set_xlim(blim[0]-1, blim[1] + 2)
@@ -572,6 +574,7 @@ def beam_gate_boundary_plots(boundaries, clusters, clust_idf, glim, blim, title,
             ax.plot([b, b+1], [bnd["lb"], bnd["lb"]], ls="--", color="b", lw=0.5)
             ax.plot([b, b+1], [bnd["ub"], bnd["ub"]], ls="--", color="g", lw=0.5)
             #ax.scatter([b+0.5], [bnd["peak"]], marker="*", color="k", s=3)
+    fonttext["size"] = 3
     for x in clusters.keys():
         C = clusters[x]
         for _c in C: 
@@ -581,6 +584,8 @@ def beam_gate_boundary_plots(boundaries, clusters, clust_idf, glim, blim, title,
                     horizontalalignment="center", verticalalignment="center",fontdict=fonttext)
     ax.axvline(b+1, lw=0.3, color="gray", ls="--")
     ax.set_title(title)
+    fonttext["size"] = 10
+    if gflg_type>=0: ax.text(1.05, 0.5, case, ha="center", va="center", fontdict=fonttext, transform=ax.transAxes, rotation=90)
     ax.set_xticks(np.arange(blim[0], blim[1] + 1) + 0.5)
     ax.set_xticklabels(np.arange(blim[0], blim[1] + 1))
     fig.savefig(fname, bbox_inches="tight")
@@ -827,7 +832,7 @@ class FanPlots(object):
         return ax
     
     def plot_data(self, df):
-        """ Plot data - overlay on top of map """"
+        """ Plot data - overlay on top of map """
         return
     
     def save(self, filepath):

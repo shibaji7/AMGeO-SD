@@ -11,6 +11,7 @@ __maintainer__ = "Chakraborty, S."
 __email__ = "shibaji7@vt.edu"
 __status__ = "Research"
 
+import os
 import numpy as np
 import pandas as pd
 from scipy import stats, ndimage
@@ -20,10 +21,12 @@ from sklearn.cluster import DBSCAN
 
 import utils
 
+from plotlib import *
+
 class BeamGate(object):
     """ Class to filter middle latitude radars """
 
-    def __init__(self, rad, scans, eps=2, min_samples=10):
+    def __init__(self, rad, scans, eps=2, min_samples=10, _dict_={}):
         """
         initialize variables
         
@@ -37,6 +40,10 @@ class BeamGate(object):
         self.eps = eps
         self.min_samples = min_samples
         self.boundaries = {}
+        for p in _dict_.keys():
+            setattr(self, p, _dict_[p])
+        self.fig_folder = utils.get_config("BASE_DIR") + self.sim_id + "/" + self.rad + "/figs/"
+        if not os.path.exists(self.fig_folder): os.system("mkdir -p " + self.fig_folder)
         return
 
     def extract_gatelims(self, df):
@@ -85,8 +92,8 @@ class BeamGate(object):
             if r >= 0: self.boundaries[bm].append({"peak": Rng[np.min(x.slist) + Eco[np.min(x.slist):np.max(x.slist)].argmax()],
                 "ub": np.max(x.slist), "lb": np.min(x.slist), "value": np.max(eco)*xpt, "bmnum": bm, "echo": len(x), "sound": sb[0]})
         logger.info(f" Individual clster detected: {set(du.labels)}")
-        #to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco),
-        #        "data/outputs/{r}/gate_{bm}_summary.png".format(r=self.rad, bm=bm), sb)
+        fig_file = self.fig_folder + "gate_{bm}_summary.png".format(r=self.rad, bm=bm)
+        to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco), fig_file, sb)
         return
 
     def filter_by_SMF(self, df, bm, method=None):
@@ -130,7 +137,8 @@ class BeamGate(object):
 
         if bm == "all": du = df.copy()
         else: du = df[df.bmnum==bm]
-        logger.info(f" Beam Analysis:  {bm}, {len(du.groupby("time"))}")
+        l = len(du.groupby("time"))
+        logger.info(f" Beam Analysis:  {bm}, {l}")
         sb = [np.nan, np.nan, np.nan]
         sb[0] = len(du.groupby("time"))
         self.gen_summary[bm] = {"bmnum": bm, "v": np.median(du.v), "p": np.median(du.p_l), "w": np.median(du.w_l),
@@ -167,8 +175,8 @@ class BeamGate(object):
 
         du["labels"] =  np.where(np.isnan(du["labels"]), -1, du["labels"])
         logger.info(f" Individual clster detected:  {set(du.labels)}")
-        #to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco),
-        #        "data/outputs/{r}/gate_{bm}_summary.png".format(r=self.rad, bm=bm), sb)
+        fig_file = self.fig_folder + "gate_{bm}_summary.png".format(r=self.rad, bm=bm)
+        to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco), fig_file, sb)
         return
 
     def doFilter(self, io, window=11, order=1, beams=range(4,24)):
@@ -196,26 +204,28 @@ class BeamGate(object):
                 else: self.filter_by_dbscan(df, bm)
         title = "Date: %s [%s-%s] UT | %s"%(df.time.tolist()[0].strftime("%Y-%m-%d"),
                 df.time.tolist()[0].strftime("%H.%M"), df.time.tolist()[-1].strftime("%H.%M"), self.rad.upper())
-        fname = "data/outputs/%s/gate_boundary.png"%(self.rad)
         self.gc = []
         for x in self.boundaries.keys():
             for j, m in enumerate(self.boundaries[x]):
                 self.gc.append(m)
         self.ubeam, self.lbeam = np.max(df.bmnum), np.min(df.bmnum)
         self.sma_bgspace()
-        self.cluster_identification(df)
-        #beam_gate_boundary_plots(self.boundaries, self.clusters, None, 
-        #        glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
-        #        fname=fname)
-        #beam_gate_boundary_plots(self.boundaries, self.clusters, self.clust_idf,
-        #        glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
-        #        fname=fname.replace("gate_boundary", "gate_boundary_id"))
-        #general_stats(self.gen_summary, fname="data/outputs/%s/general_stats.png"%(self.rad))
+        self.probabilistic_cluster_identification(df)
+        fname = self.fig_folder + "gate_boundary.png"
+        beam_gate_boundary_plots(self.boundaries, self.clusters, None, 
+                glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
+                fname=fname)
+        fname = self.fig_folder + "gate_boundary_id.png"
+        beam_gate_boundary_plots(self.boundaries, self.clusters, self.clust_idf,
+                glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
+                fname=fname, gflg_type=self.gflg_type)
+        fname = self.fig_folder + "general_stats.png"
+        general_stats(self.gen_summary, fname=fname)
         for c in self.clusters.keys():
             cluster = self.clusters[c]
-            fname = "data/outputs/%s/clust_%02d_stats.png"%(self.rad, c)
+            fname = self.fig_folder + "clust_%02d_stats.png"%c
             #cluster_stats(df, cluster, fname, title+" | Cluster# %02d"%c)
-            #individal_cluster_stats(self.clusters[c], df, "data/outputs/%s/ind_clust_%02d_stats.png"%(self.rad, c), 
+            #individal_cluster_stats(self.clusters[c], df, self.fig_folder + "ind_clust_%02d_stats.png"%c, 
             #        title+" | Cluster# %02d"%c+"\n"+"Cluster ID: _%s_"%self.clust_idf[c].upper())
         return
 
@@ -234,6 +244,23 @@ class BeamGate(object):
             self.clust_idf[c] = "us"
             if Vmin > -20 and Vmax < 20: self.clust_idf[c] = "gs"
             elif (Vmin > -50 and Vmax < 50) and (Vmed-Vsig < -20 or Vmed+Vsig > 20): self.clust_idf[c] = "sais"
+        return
+    
+    def probabilistic_cluster_identification(self, df):
+        """ Idenitify the cluster based on Idenitification """
+        df["cluster_id"] = [np.nan] * len(df)
+        prob_dctor = ScatterTypeDetection()
+        for c in self.clusters.keys():
+            for cls in self.clusters[c]:
+                df["cluster_id"] = np.where((df.slist<=cls["lb"]) & (df.slist<=cls["ub"]) & (df.bmnum==cls["bmnum"]),
+                                            c, df.cluster_id)
+            du = df[df["cluster_id"]==c]
+            prob_dctor.copy(du)
+            du, prob_clusters = prob_dctor.run(thresh=[self.lth, self.uth], pth=self.pth)
+            auc = prob_clusters[self.gflg_type][c]["auc"]
+            if prob_clusters[self.gflg_type][c]["type"] == "IS": auc = 1-auc
+            if prob_clusters[self.gflg_type][c]["type"] == "US": self.clust_idf[c] = "us"
+            else: self.clust_idf[c] = "%.1f"%(auc*100) + "%" + prob_clusters[self.gflg_type][c]["type"].lower()
         return
 
     def sma_bgspace(self):
@@ -383,8 +410,11 @@ class TimeFilter(object):
 class ScatterTypeDetection(object):
     """ Detecting scatter type """
 
-    def __init__(self, df):
+    def __init__(self):
         """ kind: 0- individual, 2- KDE by grouping """
+        return
+    
+    def copy(self, df):
         self.df = df.fillna(0)
         return
 
@@ -405,13 +435,13 @@ class ScatterTypeDetection(object):
                     self.df["proba_%d"%(cs)] = self.proba
         return self.df.copy(), self.clusters
 
-    def kde(self):
+    def kde_beam(self):
         from scipy.stats import beta
         import warnings
         warnings.filterwarnings('ignore', 'The iteration is not making good progress')
         vel = np.hstack(self.df["v"])
         wid = np.hstack(self.df["w_l"])
-        clust_flg_1d = np.hstack(self.df["labels"])
+        clust_flg_1d = np.hstack(self.df["cluster_id"])
         self.gs_flg = np.zeros(len(clust_flg_1d))
         self.proba = np.zeros(len(clust_flg_1d))
         beams = np.hstack(self.df["bmnum"])
@@ -443,11 +473,48 @@ class ScatterTypeDetection(object):
                     self.proba[clust_mask] = f
                     self.clusters[self.case][bm][c] = {"auc": auc, "type": ty}
         return
+    
+    def kde(self):
+        from scipy.stats import beta
+        import warnings
+        warnings.filterwarnings('ignore', 'The iteration is not making good progress')
+        vel = np.hstack(self.df["v"])
+        wid = np.hstack(self.df["w_l"])
+        clust_flg_1d = np.hstack(self.df["cluster_id"])
+        self.gs_flg = np.zeros(len(clust_flg_1d))
+        self.proba = np.zeros(len(clust_flg_1d))
+        beams = np.hstack(self.df["bmnum"])
+        for c in np.unique(clust_flg_1d):
+            clust_mask = c == clust_flg_1d
+            if c == -1: self.gs_flg[clust_mask] = -1
+            else:
+                v, w = vel[clust_mask], wid[clust_mask]
+                if self.case == 0: f = 1/(1+np.exp(np.abs(v)+w/3-30))
+                if self.case == 1: f = 1/(1+np.exp(np.abs(v)+w/4-60))
+                if self.case == 2: f = 1/(1+np.exp(np.abs(v)-0.139*w+0.00113*w**2-33.1))
+                ## KDE part
+                f[f==0.] = np.random.uniform(0.001, 0.01, size=len(f[f==0.]))
+                f[f==1.] = np.random.uniform(0.95, 0.99, size=len(f[f==1.]))
+                try:
+                    a, b, loc, scale = beta.fit(f, floc=0., fscale=1.)
+                    auc = 1 - beta.cdf(self.pth, a, b, loc=0., scale=1.)
+                    if np.isnan(auc): auc = np.mean(f)
+                    #print(" KDE Estimating AUC: %.2f"%auc, c)
+                except:
+                    auc = np.mean(f)
+                    #print(" Estimating AUC: %.2f"%auc, c)
+                if auc < self.thresh[0]: gflg, ty = 0., "IS"
+                elif auc >= self.thresh[1]: gflg, ty = 1., "GS"
+                else: gflg, ty = -1, "US"
+                self.gs_flg[clust_mask] = gflg
+                self.proba[clust_mask] = f
+                self.clusters[self.case][c] = {"auc": auc, "type": ty}
+        return
 
     def indp(self):
         vel = np.hstack(self.df["v"])
         wid = np.hstack(self.df["w_l"])
-        clust_flg_1d = np.hstack(self.df["labels"])
+        clust_flg_1d = np.hstack(self.df["cluster_id"])
         self.gs_flg = np.zeros(len(clust_flg_1d))
         beams = np.hstack(self.df["bmnum"])
         for bm in np.unique(beams):
