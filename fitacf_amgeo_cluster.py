@@ -64,12 +64,16 @@ def run_fitacf_amgeo_clustering(rad, start, end, gflg_cast, _dict_):
     if gflg_cast not in gflg_cast_types: 
         logger.error(f"gflg_cast has to be in {gflg_cast_types}")
         raise Exception(f"gflg_cast has to be in {gflg_cast_types}")
-    scan_info = fetch_print_fit_rec(rad, start, start + dt.timedelta(minutes=5), file_type=_dict_["ftype"])
-    io = FetchData( rad, [start, end], ftype=_dict_["ftype"], verbose=_dict_["verbose"])
-    _, scans = io.fetch_data(by="scan", scan_prop=scan_info)
-    df = io.scans_to_pandas(scans)
-    bgc = BeamGate(rad, scans, _dict_=_dict_)
-    bgc.doFilter(io)
+    dn, dur = start, _dict_["dur"]
+    while dn < end:
+        scan_info = fetch_print_fit_rec(rad, dn, dn + dt.timedelta(minutes=5), file_type=_dict_["ftype"])
+        io = FetchData( rad, [dn, dn + dt.timedelta(minutes=dur)], ftype=_dict_["ftype"], verbose=_dict_["verbose"])
+        _, scans = io.fetch_data(by="scan", scan_prop=scan_info)
+        df = io.scans_to_pandas(scans)
+        _dict_["start"], _dict_["end"] = dn, dn + dt.timedelta(minutes=dur)
+        bgc = BeamGate(rad, scans, _dict_=_dict_)
+        bgc.doFilter(io, themis=scan_info["t_beam"])
+        dn = dn + dt.timedelta(minutes=dur)
     return {}, scan_info
 
 # Script run can also be done via main program
@@ -80,6 +84,7 @@ if __name__ == "__main__":
             type=prs.parse)
     parser.add_argument("-e", "--end", default=dt.datetime(2015,3,17,4,30), help="End date (default 2015-03-17T03:30)", 
             type=prs.parse)
+    parser.add_argument("-du", "--dur", default=30, help="Duration of the time window in min (30 mins)")
     parser.add_argument("-f", "--dofilter", action="store_false", help="Do filtering (default True)")
     parser.add_argument("-sv", "--save", action="store_false", help="Save data to file (defult True)")
     parser.add_argument("-gft", "--gflg_type", type=int, default=1, help="Ground scatter flag estimation type (default 2)")

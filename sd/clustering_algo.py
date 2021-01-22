@@ -16,10 +16,12 @@ import numpy as np
 import pandas as pd
 from scipy import stats, ndimage
 from loguru import logger
+import traceback
 
 from sklearn.cluster import DBSCAN
 
 import utils
+from boxcar_filter import Filter
 
 from plotlib import *
 
@@ -35,14 +37,17 @@ class BeamGate(object):
         eps: Radius of DBSCAN
         min_samples: min samplese of DBSCAN
         """
+        logger.info("BeamGate Cluster")
         self.rad = rad
-        self.scans = scans
+        filt = Filter()
+        self.scans = [filt._discard_repeting_beams(s) for s in scans]
         self.eps = eps
         self.min_samples = min_samples
         self.boundaries = {}
         for p in _dict_.keys():
             setattr(self, p, _dict_[p])
-        self.fig_folder = utils.get_config("BASE_DIR") + self.sim_id + "/" + self.rad + "/figs/"
+        self.fig_folder = utils.get_config("BASE_DIR") + self.sim_id + "/" + self.rad +\
+                    "/figs/%s_%s/"%(self.start.strftime("%Y-%m-%d-%H-%M"), self.end.strftime("%Y-%m-%d-%H-%M"))
         if not os.path.exists(self.fig_folder): os.system("mkdir -p " + self.fig_folder)
         return
 
@@ -92,7 +97,7 @@ class BeamGate(object):
             if r >= 0: self.boundaries[bm].append({"peak": Rng[np.min(x.slist) + Eco[np.min(x.slist):np.max(x.slist)].argmax()],
                 "ub": np.max(x.slist), "lb": np.min(x.slist), "value": np.max(eco)*xpt, "bmnum": bm, "echo": len(x), "sound": sb[0]})
         logger.info(f" Individual clster detected: {set(du.labels)}")
-        fig_file = self.fig_folder + "gate_{bm}_summary.png".format(r=self.rad, bm=bm)
+        fig_file = self.fig_folder + "gate_{bm}_summary.png".format(bm="%02d"%bm)
         to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco), fig_file, sb)
         return
 
@@ -163,23 +168,27 @@ class BeamGate(object):
         if method == "np": troughs = local_minima_np(np.array(eco))
         else: troughs = local_minima_ndimage(np.array(eco), min_distance=5)
         peaks = local_maxima_ndimage(np.array(eco), min_distance=5)
-        logger.info(f" Gate bounds: {troughs}, {peaks}")
+        logger.info(f" Gate bounds (T,P): {troughs}, {peaks}")
         peaks = np.append(peaks, np.median(troughs[-2:]))
+        #if len(peaks) + 1 < len(troughs): troughs = troughs[:len(peaks) + 1]
+        logger.info(f" Gate bounds adjustment (T,P): {troughs}, {peaks}")
         for r in range(len(troughs)-1):
             glims[r] = [troughs[r], troughs[r+1]]
             du["labels"] = np.where((du["slist"]<=troughs[r+1]) & (du["slist"]>=troughs[r]), r, du["labels"])
             names[r] = "C" + str(r)
-            if r >= 0: self.boundaries[bm].append({"peak": peaks[r],
-                "ub": troughs[r+1], "lb": troughs[r], "value": np.max(eco)*xpt, "bmnum": bm, 
-                "echo": len(du[(du["slist"]<=troughs[r+1]) & (du["slist"]>=troughs[r])]), "sound": sb[0]})
+            if r >= 0: 
+                self.boundaries[bm].append({"peak": peaks[r], "ub": troughs[r+1], "lb": troughs[r], 
+                                            "value": np.max(eco)*xpt, "bmnum": bm, 
+                                            "echo": len(du[(du["slist"]<=troughs[r+1]) 
+                                                           & (du["slist"]>=troughs[r])]), "sound": sb[0]})
 
         du["labels"] =  np.where(np.isnan(du["labels"]), -1, du["labels"])
         logger.info(f" Individual clster detected:  {set(du.labels)}")
-        fig_file = self.fig_folder + "gate_{bm}_summary.png".format(r=self.rad, bm=bm)
+        fig_file = self.fig_folder + "gate_{bm}_summary.png".format(bm="%02d"%bm)
         to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco), fig_file, sb)
         return
 
-    def doFilter(self, io, window=11, order=1, beams=range(4,24)):
+    def doFilter(self, io, window=11, order=1, beams=range(4,24), themis=15):
         """
         Do filter for sub-auroral scatter
         """
@@ -200,7 +209,14 @@ class BeamGate(object):
             for bm in beams:
                 self.boundaries[bm] = []
                 self.gen_summary[bm] = {}
-                if bm==15: self.filter_by_SMF(df, bm)
+                if bm==themis: 
+                    try:
+                        #self.filter_by_SMF(df, bm)
+                        self.filter_by_dbscan(df, bm)
+                    except:
+                        logger.error(f"SMF failed for this themis beam {themis}")
+                        traceback.print_exc()
+                        self.filter_by_dbscan(df, bm)
                 else: self.filter_by_dbscan(df, bm)
         title = "Date: %s [%s-%s] UT | %s"%(df.time.tolist()[0].strftime("%Y-%m-%d"),
                 df.time.tolist()[0].strftime("%H.%M"), df.time.tolist()[-1].strftime("%H.%M"), self.rad.upper())
@@ -222,9 +238,12 @@ class BeamGate(object):
         fname = self.fig_folder + "general_stats.png"
         general_stats(self.gen_summary, fname=fname)
         for c in self.clusters.keys():
-            cluster = self.clusters[c]
-            fname = self.fig_folder + "clust_%02d_stats.png"%c
-            #cluster_stats(df, cluster, fname, title+" | Cluster# %02d"%c)
+            try:
+                cluster = self.clusters[c]
+                fname = self.fig_folder + "clust_%02d_stats.png"%c
+                cluster_stats(df, cluster, fname, title+" | Cluster# %02d"%c)
+            except:
+                logger.error(f"Error in cluster stats, Cluster #{c}")
             #individal_cluster_stats(self.clusters[c], df, self.fig_folder + "ind_clust_%02d_stats.png"%c, 
             #        title+" | Cluster# %02d"%c+"\n"+"Cluster ID: _%s_"%self.clust_idf[c].upper())
         return
@@ -307,12 +326,15 @@ class BeamGate(object):
 class TimeFilter(object):
     """ Class to time filter middle latitude radars """
     
-    def __init__(self, df, beam=7, tw=15, eps=2, min_samples=10):
+    def __init__(self, df, beam=7, tw=15, eps=2, min_samples=10, _dict_={}):
+        logger.info("Time Cluster by Beam")
         self.df = df[df.bmnum==beam]
         self.tw = tw
         self.eps = eps
         self.min_samples = min_samples
         self.boundaries = {}
+        for p in _dict_.keys():
+            setattr(self, p, _dict_[p])
         return
     
     def run_codes(self):
@@ -349,12 +371,13 @@ class TimeFilter(object):
         
         self.ltime, self.utime = np.min(time_index), np.max(time_index)
         self.gc = []
+        self.clust_idf = {}
         for ti in np.unique(time_index):
             clust = self.boundaries[ti]
             for cl in clust:
                 self.gc.append(cl)
-        logger.info(len(self.gc))
         self.sma_bgspace()
+        self.probabilistic_cluster_identification()
         return
     
     def sma_bgspace(self):
@@ -404,7 +427,21 @@ class TimeFilter(object):
                 self.df["labels"] = np.where((self.df.slist<=cl["ub"]) & (self.df.slist>=cl["lb"]) & 
                                              (self.df.time_index==cl["time_index"]) & (self.df.gate_labels==cl["gc"])
                                              , c, self.df["labels"])
-        logger.info(set(self.df["labels"]), self.clusters.keys())
+        return
+    
+    def probabilistic_cluster_identification(self):
+        """ Idenitify the cluster based on Idenitification """
+        self.df["cluster_id"] = [np.nan] * len(self.df)
+        prob_dctor = ScatterTypeDetection()
+        for c in np.unique(self.df["labels"]):
+            if c >= 0:
+                du = df[df["labels"]==c]
+                prob_dctor.copy(du)
+                du, prob_clusters = prob_dctor.run(thresh=[self.lth, self.uth], pth=self.pth)
+                auc = prob_clusters[self.gflg_type][c]["auc"]
+                if prob_clusters[self.gflg_type][c]["type"] == "IS": auc = 1-auc
+                if prob_clusters[self.gflg_type][c]["type"] == "US": self.clust_idf[c] = "us"
+                else: self.clust_idf[c] = "%.1f"%(auc*100) + "%" + prob_clusters[self.gflg_type][c]["type"].lower()
         return
     
 class ScatterTypeDetection(object):

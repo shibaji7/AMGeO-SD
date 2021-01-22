@@ -555,7 +555,7 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
         ax.set_ylim(0,100)
         if i==0: ax.set_xlabel("Velocity (m/s)", fontdict=font)
         ax.set_ylabel("Width (m/s)", fontdict=font)
-    fig.savefig(fname.replace("png", "pdf"), bbox_inches="tight")
+    #fig.savefig(fname.replace("png", "pdf"), bbox_inches="tight")
     return
 
 def beam_gate_boundary_plots(boundaries, clusters, clust_idf, glim, blim, title, fname, gflg_type=-1):
@@ -574,7 +574,7 @@ def beam_gate_boundary_plots(boundaries, clusters, clust_idf, glim, blim, title,
             ax.plot([b, b+1], [bnd["lb"], bnd["lb"]], ls="--", color="b", lw=0.5)
             ax.plot([b, b+1], [bnd["ub"], bnd["ub"]], ls="--", color="g", lw=0.5)
             #ax.scatter([b+0.5], [bnd["peak"]], marker="*", color="k", s=3)
-    fonttext["size"] = 3
+    fonttext["size"] = 6
     for x in clusters.keys():
         C = clusters[x]
         for _c in C: 
@@ -647,7 +647,7 @@ def cluster_stats(df, cluster, fname, title):
     return
 
 def general_stats(g_stats, fname):
-    fig, axes = plt.subplots(figsize=(6,5), nrows=2, ncols=1, dpi=120, sharex=True)
+    fig, axes = plt.subplots(figsize=(6,10), nrows=4, ncols=1, dpi=120, sharex=True)
     ax = axes[0]
     width=0.2
     df = pd.DataFrame.from_records(list(g_stats.values()))
@@ -657,19 +657,25 @@ def general_stats(g_stats, fname):
     ax = ax.twinx()
     ax.bar(df.bmnum+width, df.echo, width=0.3, color="b", label="E")
     ax.set_ylabel(r"$N_{echo}$", fontdict=font)
-    ax.set_xlabel("Beams", fontdict=font)
     ax.set_xticks(df.bmnum)
     ax.legend(loc=1)
 
     ax = axes[1]
-    ax.errorbar(df.bmnum, df.v, yerr=df.v_mad, color="r", elinewidth=2.5, ecolor="r", fmt="o", ls="None", label="V")
-    ax.errorbar(df.bmnum, df.w, yerr=df.w_mad, color="b", elinewidth=1.5, ecolor="b", fmt="o", ls="None", label="W")
-    ax.errorbar(df.bmnum, df.p, yerr=df.p_mad, color="k", elinewidth=0.5, ecolor="k", fmt="o", ls="None", label="P")
+    ax.errorbar(df.bmnum, df.v, yerr=df.v_mad, color="r", elinewidth=2.5, ecolor="r", fmt="o", ls="None")
     ax.set_ylim(-20, 40)
-    ax.set_ylabel(r"$V_{med},W_{med},P_{med}$", fontdict=font)
+    ax.set_ylabel(r"$V_{med}$", fontdict=font)
+    ax.set_xticks(df.bmnum)
+    ax = axes[2]
+    ax.errorbar(df.bmnum, df.w, yerr=df.w_mad, color="b", elinewidth=1.5, ecolor="b", fmt="o", ls="None")
+    ax.set_ylim(-20, 40)
+    ax.set_ylabel(r"$W_{med}$", fontdict=font)
+    ax.set_xticks(df.bmnum)
+    ax = axes[3]
+    ax.errorbar(df.bmnum, df.p, yerr=df.p_mad, color="k", elinewidth=0.5, ecolor="k", fmt="o", ls="None")
+    ax.set_ylim(-20, 40)
+    ax.set_ylabel(r"$P_{med}$", fontdict=font)
     ax.set_xlabel("Beams", fontdict=font)
     ax.set_xticks(df.bmnum)
-    ax.legend(loc=1)
 
     fig.subplots_adjust(hspace=0.1)
     fig.savefig(fname, bbox_inches="tight")
