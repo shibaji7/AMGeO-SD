@@ -26,7 +26,7 @@ import json
 import utils
 from fit_records import fetch_print_fit_rec
 from get_fit_data import FetchData
-from clustering_algo import BeamGate, TimeFilter
+from clustering_algo import BeamGateFilter, TimeGateFilter
 
 def run_fitacf_amgeo_clustering(rad, start, end, gflg_cast, _dict_):
     """
@@ -64,25 +64,33 @@ def run_fitacf_amgeo_clustering(rad, start, end, gflg_cast, _dict_):
     if gflg_cast not in gflg_cast_types: 
         logger.error(f"gflg_cast has to be in {gflg_cast_types}")
         raise Exception(f"gflg_cast has to be in {gflg_cast_types}")
-    dn, dur = start, _dict_["dur"]
-    while dn < end:
-        scan_info = fetch_print_fit_rec(rad, dn, dn + dt.timedelta(minutes=5), file_type=_dict_["ftype"])
-        io = FetchData( rad, [dn, dn + dt.timedelta(minutes=dur)], ftype=_dict_["ftype"], verbose=_dict_["verbose"])
+    if _dict_["kind"] == "bgc":
+        dn, dur = start, _dict_["dur"]
+        while dn < end:
+            scan_info = fetch_print_fit_rec(rad, dn, dn + dt.timedelta(minutes=5), file_type=_dict_["ftype"])
+            io = FetchData( rad, [dn, dn + dt.timedelta(minutes=dur)], ftype=_dict_["ftype"], verbose=_dict_["verbose"])
+            _, scans = io.fetch_data(by="scan", scan_prop=scan_info)
+            df = io.scans_to_pandas(scans)
+            _dict_["start"], _dict_["end"] = dn, dn + dt.timedelta(minutes=dur)
+            bgc = BeamGateFilter(rad, scans, _dict_=_dict_)
+            bgc.doFilter(io, themis=scan_info["t_beam"])
+            dn = dn + dt.timedelta(minutes=dur)
+    elif _dict_["kind"] == "tgc":
+        scan_info = fetch_print_fit_rec(rad, start, start + dt.timedelta(minutes=5), file_type=_dict_["ftype"])
+        io = FetchData( rad, [start, end], ftype=_dict_["ftype"], verbose=_dict_["verbose"])
         _, scans = io.fetch_data(by="scan", scan_prop=scan_info)
         df = io.scans_to_pandas(scans)
-        _dict_["start"], _dict_["end"] = dn, dn + dt.timedelta(minutes=dur)
-        bgc = BeamGate(rad, scans, _dict_=_dict_)
-        bgc.doFilter(io, themis=scan_info["t_beam"])
-        dn = dn + dt.timedelta(minutes=dur)
+        tgc = TimeGateFilter(df, beams=np.unique(df.bmnum), eps=_dict_["eps"], min_samples=_dict_["min_samples"], _dict_=_dict_)
+        tgc.run_codes()
     return {}, scan_info
 
 # Script run can also be done via main program
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--rad", default="bks", help="SuperDARN radar code (default bks)")
-    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,17,4), help="Start date (default 2015-03-17T03)", 
+    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,16,16), help="Start date (default 2015-03-17T03)", 
             type=prs.parse)
-    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,17,4,30), help="End date (default 2015-03-17T03:30)", 
+    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,16,16,30), help="End date (default 2015-03-17T03:30)", 
             type=prs.parse)
     parser.add_argument("-du", "--dur", default=30, help="Duration of the time window in min (30 mins)")
     parser.add_argument("-f", "--dofilter", action="store_false", help="Do filtering (default True)")
@@ -97,6 +105,10 @@ if __name__ == "__main__":
     parser.add_argument("-uth", "--uth", type=float, default=2./3., help="Probability cut-off for GS")
     parser.add_argument("-sid", "--sim_id", default="L100", help="Simulation ID, need to store data into this folder (default L100)")
     parser.add_argument("-ftype", "--ftype", default="fitacf", help="FitACF file type (futacf, fitacf3)")
+    parser.add_argument("-k", "--kind", default="bgc", help="Clustering type bgc/tgc")
+    parser.add_argument("-eps", "--eps", default=2, type=int, help="Epsilon for DBSCAN")
+    parser.add_argument("-ms", "--min_samples", default=10, type=int, help="Min Samples for DBSCAN")
+    parser.add_argument("-tw", "--tw", default=15, help="Duration of the time window for Time-Gate clustering in min (30 mins)")
     args = parser.parse_args()
     logger.info(f"Simulation run using fitacf_amgeo_cluster.__main__")
     _dic_ = {}

@@ -33,13 +33,17 @@ def smooth(x, window_len=51, window="hanning"):
     y = y[int(d/2):-int(d/2)]
     return y
 
-def get_gridded_parameters(q, xparam="beam", yparam="slist", zparam="v", r=0):
+def get_gridded_parameters(q, xparam="beam", yparam="slist", zparam="v", r=0, rounding=True):
     """
     Method converts scans to "beam" and "slist" or gate
     """
     plotParamDF = q[ [xparam, yparam, zparam] ]
-    plotParamDF.loc[:, xparam] = np.round(plotParamDF[xparam].tolist(), r)
-    plotParamDF.loc[:, yparam] = np.round(plotParamDF[yparam].tolist(), r)
+    if rounding:
+        plotParamDF.loc[:, xparam] = np.round(plotParamDF[xparam].tolist(), r)
+        plotParamDF.loc[:, yparam] = np.round(plotParamDF[yparam].tolist(), r)
+    else:
+        plotParamDF[xparam] = plotParamDF[xparam].tolist()
+        plotParamDF[yparam] = plotParamDF[yparam].tolist()
     plotParamDF = plotParamDF.groupby( [xparam, yparam] ).mean().reset_index()
     plotParamDF = plotParamDF[ [xparam, yparam, zparam] ].pivot( xparam, yparam )
     x = plotParamDF.index.values

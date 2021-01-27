@@ -24,8 +24,9 @@ import utils
 from boxcar_filter import Filter
 
 from plotlib import *
+from matplotlib.dates import date2num
 
-class BeamGate(object):
+class BeamGateFilter(object):
     """ Class to filter middle latitude radars """
 
     def __init__(self, rad, scans, eps=2, min_samples=10, _dict_={}):
@@ -47,7 +48,7 @@ class BeamGate(object):
         for p in _dict_.keys():
             setattr(self, p, _dict_[p])
         self.fig_folder = utils.get_config("BASE_DIR") + self.sim_id + "/" + self.rad +\
-                    "/figs/%s_%s/"%(self.start.strftime("%Y-%m-%d-%H-%M"), self.end.strftime("%Y-%m-%d-%H-%M"))
+                    "/beamgate/figs/%s_%s/"%(self.start.strftime("%Y-%m-%d-%H-%M"), self.end.strftime("%Y-%m-%d-%H-%M"))
         if not os.path.exists(self.fig_folder): os.system("mkdir -p " + self.fig_folder)
         return
 
@@ -97,7 +98,9 @@ class BeamGate(object):
             if r >= 0: self.boundaries[bm].append({"peak": Rng[np.min(x.slist) + Eco[np.min(x.slist):np.max(x.slist)].argmax()],
                 "ub": np.max(x.slist), "lb": np.min(x.slist), "value": np.max(eco)*xpt, "bmnum": bm, "echo": len(x), "sound": sb[0]})
         logger.info(f" Individual clster detected: {set(du.labels)}")
-        fig_file = self.fig_folder + "gate_{bm}_summary.png".format(bm="%02d"%bm)
+        loc_folder = self.fig_folder + "gate_summary/"
+        if not os.path.exists(loc_folder): os.system("mkdir -p " + loc_folder)
+        fig_file = loc_folder + "gate_{bm}_summary.png".format(bm="%02d"%bm)
         to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco), fig_file, sb)
         return
 
@@ -184,7 +187,9 @@ class BeamGate(object):
 
         du["labels"] =  np.where(np.isnan(du["labels"]), -1, du["labels"])
         logger.info(f" Individual clster detected:  {set(du.labels)}")
-        fig_file = self.fig_folder + "gate_{bm}_summary.png".format(bm="%02d"%bm)
+        loc_folder = self.fig_folder + "gate_summary/"
+        if not os.path.exists(loc_folder): os.system("mkdir -p " + loc_folder)
+        fig_file = loc_folder + "gate_{bm}_summary.png".format(bm="%02d"%bm)
         to_midlatitude_gate_summary(self.rad, du, glims, names, (rng,eco), fig_file, sb)
         return
 
@@ -227,27 +232,65 @@ class BeamGate(object):
         self.ubeam, self.lbeam = np.max(df.bmnum), np.min(df.bmnum)
         self.sma_bgspace()
         self.probabilistic_cluster_identification(df)
-        fname = self.fig_folder + "gate_boundary.png"
+        fname = self.fig_folder + "01_gate_boundary.png"
         beam_gate_boundary_plots(self.boundaries, self.clusters, None, 
                 glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
                 fname=fname)
-        fname = self.fig_folder + "gate_boundary_id.png"
+        fname = self.fig_folder + "03_gate_boundary_id.png"
         beam_gate_boundary_plots(self.boundaries, self.clusters, self.clust_idf,
                 glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
                 fname=fname, gflg_type=self.gflg_type)
-        fname = self.fig_folder + "general_stats.png"
+        fname = self.fig_folder + "04_general_stats.png"
         general_stats(self.gen_summary, fname=fname)
         for c in self.clusters.keys():
+            cluster = self.clusters[c]
             try:
-                cluster = self.clusters[c]
-                fname = self.fig_folder + "clust_%02d_stats.png"%c
+                loc_folder = self.fig_folder + "clust_stats/"
+                if not os.path.exists(loc_folder): os.system("mkdir " + loc_folder)
+                fname =  loc_folder + "clust_%02d_stats.png"%c
                 cluster_stats(df, cluster, fname, title+" | Cluster# %02d"%c)
             except:
-                logger.error(f"Error in cluster stats, Cluster #{c}")
-            #individal_cluster_stats(self.clusters[c], df, self.fig_folder + "ind_clust_%02d_stats.png"%c, 
-            #        title+" | Cluster# %02d"%c+"\n"+"Cluster ID: _%s_"%self.clust_idf[c].upper())
+                logger.error(f"Error in cluster stats, cluster_stats, Cluster #{c}")
+            try:
+                loc_folder = self.fig_folder + "ind_clust_stats/"
+                if not os.path.exists(loc_folder): os.system("mkdir " + loc_folder)
+                fname =  loc_folder + "ind_clust_%02d_stats.png"%c
+                individal_cluster_stats(self.clusters[c], df, fname, 
+                    title+" | Cluster# %02d"%c+"\n"+"Cluster ID: _%s_"%self.clust_idf[c].upper())
+            except:
+                logger.error(f"Error in cluster stats, individal_cluster_stats, Cluster #{c}")
+        self.save_cluster_info()
         return
 
+    def save_cluster_info(self):
+        fname = self.fig_folder + "02_cluster_info.csv"
+        recs = []
+        for c in self.clusters.keys():
+            if len(self.clusters[c]) > 3:
+                Cm = {"cluster":c, "beam_low":np.nan, "beam_high":np.nan, "gate_low":np.nan, "gate_high":np.nan,
+                     "mean_gate":np.nan, "mean_beam":np.nan}
+                mbeam, mgate = 0, 0
+                beamdiv = 0
+                for i, u in enumerate(self.clusters[c]):
+                    mbeam += u["bmnum"]*(u["ub"]-u["lb"])
+                    beamdiv += int(u["ub"]-u["lb"])
+                    if i == 0: 
+                        Cm["beam_low"], Cm["beam_high"] = u["bmnum"], u["bmnum"]
+                        Cm["gate_low"], Cm["gate_high"] = u["lb"], u["ub"]
+                    else:
+                        Cm["beam_low"] = u["bmnum"] if u["bmnum"] < Cm["beam_low"] else Cm["beam_low"]
+                        Cm["beam_high"] = u["bmnum"] if u["bmnum"] > Cm["beam_high"] else Cm["beam_high"]
+                        Cm["gate_low"] = u["lb"] if u["lb"] < Cm["gate_low"] else Cm["gate_low"]
+                        Cm["gate_high"] = u["ub"] if u["ub"] > Cm["gate_high"] else Cm["gate_high"]
+                mgate = int((Cm["gate_low"]+Cm["gate_high"])/2)
+                Cm["mean_gate"], Cm["mean_beam"] = mgate, int(mbeam/beamdiv)
+                recs.append(Cm)
+        with open(fname, "w") as f:
+            start, end = self.start.strftime("%Y-%m-%d %H:%M"), self.end.strftime("%Y-%m-%d %H:%M")
+            f.write(f"# Header line: Timeline - {start},{end}; # Cluster - {len(self.clusters.keys())}\n")
+        pd.DataFrame.from_records(recs).to_csv(fname, mode="a", header=True, index=False)
+        return
+    
     def cluster_identification(self, df, qntl=[0.05,0.95]):
         """ Idenitify the cluster based on Idenitification """
         for c in self.clusters.keys():
@@ -323,73 +366,85 @@ class BeamGate(object):
             j += 1
         return
     
-class TimeFilter(object):
+class TimeGateFilter(object):
     """ Class to time filter middle latitude radars """
     
-    def __init__(self, df, beam=7, tw=15, eps=2, min_samples=10, _dict_={}):
+    def __init__(self, df, beams=[7], eps=5, min_samples=10, _dict_={}):
         logger.info("Time Cluster by Beam")
-        self.df = df[df.bmnum==beam]
-        self.tw = tw
+        self.dfx = df.copy()
+        self.beams = beams
         self.eps = eps
         self.min_samples = min_samples
         self.boundaries = {}
+        self.clust_idf = {}
         for p in _dict_.keys():
             setattr(self, p, _dict_[p])
+        self.fig_folder = utils.get_config("BASE_DIR") + self.sim_id + "/" + self.rad + "/timegate/figs/"
+        if not os.path.exists(self.fig_folder): os.system("mkdir -p " + self.fig_folder)
         return
     
     def run_codes(self):
-        start = self.df.time.tolist()[0]
-        end = start + dt.timedelta(minutes=self.tw)
-        k, j = 0, 0
-        labels = []
-        time_index = []
-        while start <= self.df.time.tolist()[-1]:
-            u = self.df[(self.df.time>=start) & (self.df.time<=end)]
-            ds = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(u[["slist"]].values)
-            labs = ds.labels_
-            labs[labs>=0] = labs[labs>=0] + k
-            labels.extend(labs.tolist())
-            start = end
+        for beam in self.beams:
+            start = self.dfx.time.tolist()[0]
             end = start + dt.timedelta(minutes=self.tw)
-            k += len(set(labs[labs>=0]))
-            time_index.extend([j]*len(labs))
-            j += 1
-        self.df["gate_labels"] = labels
-        self.df["labels"] = labels#[-1]*len(self.df)
-        self.df["time_index"] = time_index
-        
-        K = len(self.df)
-        for ti in np.unique(time_index):
-            u = self.df[self.df.time_index==ti]
-            self.boundaries[ti] = []
-            for ix in np.unique(u.gate_labels):
-                du = u[u.gate_labels==ix]
-                if ix >= 0 and len(du)/len(u) > 0.5:
-                    self.boundaries[ti].append({"peak": du.slist.mean(), "ub": du.slist.max(), "lb": du.slist.min(),
-                                                "value":len(du)/len(u), "time_index": ti, "gc": ix})
-            logger.info(f"{ti}, {np.unique(u.gate_labels)}, {len(self.boundaries[ti])}")
-        
-        self.ltime, self.utime = np.min(time_index), np.max(time_index)
-        self.gc = []
-        self.clust_idf = {}
-        for ti in np.unique(time_index):
-            clust = self.boundaries[ti]
-            for cl in clust:
-                self.gc.append(cl)
-        self.sma_bgspace()
-        self.probabilistic_cluster_identification()
+            k, j = 0, 0
+            labels = []
+            time_index = []
+            self.df = self.dfx[self.dfx.bmnum==beam]
+            while start <= self.df.time.tolist()[-1]:
+                u = self.df[(self.df.time>=start) & (self.df.time<=end)]
+                ds = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(u[["slist"]].values)
+                labs = ds.labels_
+                labs[labs>=0] = labs[labs>=0] + k
+                labels.extend(labs.tolist())
+                start = end
+                end = start + dt.timedelta(minutes=self.tw)
+                k += len(set(labs[labs>=0]))
+                time_index.extend([j]*len(labs))
+                j += 1
+            self.df["gate_labels"] = labels
+            self.df["labels"] = labels#[-1]*len(self.df)
+            self.df["time_index"] = time_index
+
+            K = len(self.df)
+            for ti in np.unique(time_index):
+                u = self.df[self.df.time_index==ti]
+                self.boundaries[ti] = []
+                for ix in np.unique(u.gate_labels):
+                    du = u[u.gate_labels==ix]
+                    if ix >= 0 and len(du)/len(u) > 0.5:
+                        self.boundaries[ti].append({"peak": du.slist.mean(), "ub": du.slist.max(), "lb": du.slist.min(),
+                                                    "value":len(du)/len(u), "time_index": ti, "gc": ix})
+
+            self.ltime, self.utime = np.min(time_index), np.max(time_index)
+            self.gc = []
+            for ti in np.unique(time_index):
+                clust = self.boundaries[ti]
+                for cl in clust:
+                    self.gc.append(cl)
+            self.sma_bgspace()
+            rti = RangeTimeIntervalPlot(110, self.df.time.tolist(), fig_title="Time-Gate Clustering", num_subplots=4)
+            rti.addParamPlot(self.df, beam, "Vel", p_max=200, p_min=-200, p_step=50, xlabel="", zparam="v", label="Velocity [m/s]")
+            rti.addParamPlot(self.df, beam, "Width", p_max=100, p_min=0, p_step=25, xlabel="", zparam="w_l", label="Spect. Width [m/s]")
+            rti.addParamPlot(self.df, beam, "Pow", p_max=30, p_min=0, p_step=6, xlabel="", zparam="p_l", label="Power [dB]")
+            rti.addCluster(self.df, beam, "TGC", xlabel="Time UT", label_clusters=True)
+            fname = self.fig_folder + "bm_{bm}_cluster_rti.png".format(bm="%02d"%beam)
+            rti.save(fname)
+            rti.close()
+            #self.probabilistic_cluster_identification()
         return
     
     def sma_bgspace(self):
         """
         Simple minded algorithm in B.G space
         """
-        def range_comp(x, y, pcnt=0.7):
+        def range_comp(x, y, pcnt=0.9):
             _cx = False
             insc = set(x).intersection(y)
             if len(x) < len(y) and len(insc) >= len(x)*pcnt: _cx = True
             if len(x) > len(y) and len(insc) >= len(y)*pcnt: _cx = True
             return _cx
+        
         def find_adjucent(lst, mxx):
             mxl = []
             for l in lst:
@@ -397,6 +452,7 @@ class TimeFilter(object):
                 elif mxx["peak"] >= l["lb"] and mxx["peak"] <= l["ub"]: mxl.append(l)
                 elif range_comp(range(l["lb"], l["ub"]+1), range(mxx["lb"], mxx["ub"]+1)): mxl.append(l)
             return mxl
+        
         def nested_cluster_find(ti, mx, j, case=-1):
             if ti < self.ltime and ti > self.utime: return
             else:
@@ -423,7 +479,6 @@ class TimeFilter(object):
         for c in self.clusters.keys():
             clust = self.clusters[c]
             for cl in clust:
-                logger.info(f"{c}, {cl}")
                 self.df["labels"] = np.where((self.df.slist<=cl["ub"]) & (self.df.slist>=cl["lb"]) & 
                                              (self.df.time_index==cl["time_index"]) & (self.df.gate_labels==cl["gc"])
                                              , c, self.df["labels"])
@@ -433,11 +488,11 @@ class TimeFilter(object):
         """ Idenitify the cluster based on Idenitification """
         self.df["cluster_id"] = [np.nan] * len(self.df)
         prob_dctor = ScatterTypeDetection()
+        prob_dctor.copy(self.df)
+        du, prob_clusters = prob_dctor.run(thresh=[self.lth, self.uth], pth=self.pth)
         for c in np.unique(self.df["labels"]):
             if c >= 0:
-                du = df[df["labels"]==c]
-                prob_dctor.copy(du)
-                du, prob_clusters = prob_dctor.run(thresh=[self.lth, self.uth], pth=self.pth)
+                print(prob_clusters, self.gflg_type, c, np.unique(self.df["labels"]))
                 auc = prob_clusters[self.gflg_type][c]["auc"]
                 if prob_clusters[self.gflg_type][c]["type"] == "IS": auc = 1-auc
                 if prob_clusters[self.gflg_type][c]["type"] == "US": self.clust_idf[c] = "us"

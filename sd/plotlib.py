@@ -14,12 +14,14 @@ __status__ = "Research"
 
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib as mpl
+from matplotlib.dates import DateFormatter, num2date
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-#import spacepy.plot as splot
-#import seaborn as sns
 import matplotlib.colors as mcolors
 from matplotlib.ticker import MultipleLocator
+import random
 
 import numpy as np
 import pandas as pd
@@ -712,7 +714,6 @@ def individal_cluster_stats(cluster, df, fname, title):
     pval = -1.
     if len(vbox) > 1: 
         H, pval = stats.f_oneway(*avbox)
-        print(H,pval)
     ax = plt.subplot2grid((4, 2), (0, 1), colspan=1)
     V = np.array(V)
     V[V<-1000] = -1000
@@ -887,7 +888,7 @@ class RangeTimeIntervalPlot(object):
                     label="Velocity [m/s]"):
         ax = self._add_axis()
         df = df[df.bmnum==beam]
-        X, Y, Z = utils.get_gridded_parameters(df, xparam="time", yparam="slist", zparam=zparam)
+        X, Y, Z = utils.get_gridded_parameters(df, xparam="time", yparam="slist", zparam=zparam, rounding=False)
         bounds = list(range(p_min, p_max+1, p_step))
         cmap = plt.cm.jet
         norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
@@ -936,7 +937,7 @@ class RangeTimeIntervalPlot(object):
         for i, j in zip(range(len(unique_labs)), unique_labs):
             if j > 0:
                 df["labels"]=np.where(df["labels"]==j, i, df["labels"])
-        X, Y, Z = utils.get_gridded_parameters(df, xparam="time", yparam="slist", zparam="labels")
+        X, Y, Z = utils.get_gridded_parameters(df, xparam="time", yparam="slist", zparam="labels", rounding=False)
         flags = df.labels
         if -1 in flags:
             cmap = get_cluster_cmap(len(np.unique(flags)), plot_noise=True)       # black for noise
@@ -974,7 +975,7 @@ class RangeTimeIntervalPlot(object):
         # add new axis
         ax = self._add_axis()
         df = df[df.bmnum==beam]
-        X, Y, Z = utils.get_gridded_parameters(df, xparam="time", yparam="slist", zparam=zparam,)
+        X, Y, Z = utils.get_gridded_parameters(df, xparam="time", yparam="slist", zparam=zparam, rounding=False)
         flags = np.array(df[zparam]).astype(int)
         if -1 in flags and 2 in flags:                     # contains noise flag
             cmap = mpl.colors.ListedColormap([(0.0, 0.0, 0.0, 1.0),     # black
