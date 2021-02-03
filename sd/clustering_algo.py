@@ -17,19 +17,97 @@ import pandas as pd
 from scipy import stats, ndimage
 from loguru import logger
 import traceback
+import json
 
 from sklearn.cluster import DBSCAN
 
 import utils
+from fit_records import fetch_print_fit_rec
+from get_fit_data import FetchData
 from boxcar_filter import Filter
 
 from plotlib import *
 from matplotlib.dates import date2num
 
+class BeamGateTimeFilter(object):
+    """ Class to filter middle latitude radars """
+    
+    def __init__(self, rad, _dict_={}):
+        self.rad = rad
+        self._dict_ = _dict_
+        self.eps = self._dict_["eps"]
+        self.min_samples = self._dict_["min_samples"]
+        self.beam_gate_clusters_file = utils.get_config("BASE_DIR") + self._dict_["sim_id"] + "/" + self.rad +\
+                    "/beamgate/beam_gate_clusters.csv"
+        self.beam_gate_time_tracker_file = utils.get_config("BASE_DIR") + self._dict_["sim_id"] + "/" + self.rad +\
+                    "/beam_gate_time_tracker.json"
+        return
+    
+    def run_bgc_algo(self):
+        if self._dict_["start"] and not os.path.exists(self.beam_gate_clusters_file):
+            rec_list = []
+            start, end = self._dict_["start"], self._dict_["end"]
+            dn, dur = start, self._dict_["dur"]
+            ti = 0
+            while dn < end:
+                self.scan_info = fetch_print_fit_rec(self.rad, dn, dn + dt.timedelta(minutes=5), file_type=self._dict_["ftype"])
+                io = FetchData( self.rad, [dn, dn + dt.timedelta(minutes=dur)], ftype=self._dict_["ftype"], verbose=self._dict_["verbose"])
+                _, scans = io.fetch_data(by="scan", scan_prop=self.scan_info)
+                df = io.scans_to_pandas(scans)
+                self._dict_["start"], self._dict_["end"] = dn, dn + dt.timedelta(minutes=dur)
+                bgc = BeamGateFilter(self.rad, scans, ti, eps=self.eps, min_samples=self.min_samples, _dict_=self._dict_)
+                bgc.doFilter(io, themis=self.scan_info["t_beam"])
+                dn = dn + dt.timedelta(minutes=dur)
+                ti += 1
+                rec_list.extend(bgc.recs)
+            self.recdf = pd.DataFrame.from_records(rec_list)
+            self.recdf.to_csv(self.beam_gate_clusters_file, header=True, index=False)
+        else: 
+            start, end = self._dict_["start"], self._dict_["end"]
+            dn, dur = start, self._dict_["dur"]
+            self.scan_info = fetch_print_fit_rec(self.rad, dn, dn + dt.timedelta(minutes=5), file_type=self._dict_["ftype"])
+            self.recdf = pd.read_csv(self.beam_gate_clusters_file)
+        return self
+    
+    def compare_box(self, box_range, box_point):
+        """ Check two boxes are linked or not """
+        chk = False
+        if box_range[0] < box_point[0] < box_range[1] and box_range[2] < box_point[1] < box_range[3]: chk = True
+        return chk
+    
+    def run_time_track_algo(self):
+        """ Tracking the temporal variations of the clusters """
+        ti_max = np.max(self.recdf.time_intv) + 1
+        bucket = self.recdf.to_dict("records")
+        clusters, i = {}, 0
+        while len(bucket) > 0:
+            clusters[i] = []
+            clusters[i].append(bucket[0])
+            ti_ini = bucket[0]["time_intv"] + 1
+            box_range = bucket[0]["beam_low"], bucket[0]["beam_high"], bucket[0]["gate_low"], bucket[0]["gate_high"]
+            box_point = bucket[0]["mean_beam"], bucket[0]["mean_gate"]
+            bucket.remove(bucket[0])
+            for ti in range(ti_ini, ti_max):
+                udf = self.recdf[self.recdf.time_intv==ti]
+                for _, ux in udf.iterrows():
+                    now_box_range = ux["beam_low"], ux["beam_high"], ux["gate_low"], ux["gate_high"]
+                    now_box_point = ux["mean_beam"], ux["mean_gate"]
+                    if self.compare_box(now_box_range, box_point) and\
+                            self.compare_box(box_range, now_box_point):
+                        d = ux.to_dict()
+                        if d in bucket:
+                            clusters[i].append(d)
+                            box_range, box_point = now_box_range, now_box_point
+                            bucket.remove(d)
+                    else: break
+            i += 1
+        with open(self.beam_gate_time_tracker_file, "w") as f: f.write(json.dumps(clusters, sort_keys=True, indent=4))
+        return self.scan_info
+
 class BeamGateFilter(object):
     """ Class to filter middle latitude radars """
 
-    def __init__(self, rad, scans, eps=2, min_samples=10, _dict_={}):
+    def __init__(self, rad, scans, time_intv, eps=2, min_samples=10, _dict_={}):
         """
         initialize variables
         
@@ -40,6 +118,7 @@ class BeamGateFilter(object):
         """
         logger.info("BeamGate Cluster")
         self.rad = rad
+        self.time_intv = time_intv
         filt = Filter()
         self.scans = [filt._discard_repeting_beams(s) for s in scans]
         self.eps = eps
@@ -240,7 +319,7 @@ class BeamGateFilter(object):
         beam_gate_boundary_plots(self.boundaries, self.clusters, self.clust_idf,
                 glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
                 fname=fname, gflg_type=self.gflg_type)
-        fname = self.fig_folder + "04_general_stats.png"
+        fname = self.fig_folder + "05_general_stats.png"
         general_stats(self.gen_summary, fname=fname)
         for c in self.clusters.keys():
             cluster = self.clusters[c]
@@ -259,16 +338,16 @@ class BeamGateFilter(object):
                     title+" | Cluster# %02d"%c+"\n"+"Cluster ID: _%s_"%self.clust_idf[c].upper())
             except:
                 logger.error(f"Error in cluster stats, individal_cluster_stats, Cluster #{c}")
-        self.save_cluster_info()
+        self.save_cluster_info(df.copy())
         return
 
-    def save_cluster_info(self):
+    def save_cluster_info(self, df):
         fname = self.fig_folder + "02_cluster_info.csv"
         recs = []
         for c in self.clusters.keys():
             if len(self.clusters[c]) > 3:
-                Cm = {"cluster":c, "beam_low":np.nan, "beam_high":np.nan, "gate_low":np.nan, "gate_high":np.nan,
-                     "mean_gate":np.nan, "mean_beam":np.nan}
+                Cm = {"time_intv":self.time_intv, "cluster":c, "beam_low":np.nan, "beam_high":np.nan,
+                      "gate_low":np.nan, "gate_high":np.nan, "mean_beam":np.nan, "mean_gate":np.nan}
                 mbeam, mgate = 0, 0
                 beamdiv = 0
                 for i, u in enumerate(self.clusters[c]):
@@ -289,6 +368,12 @@ class BeamGateFilter(object):
             start, end = self.start.strftime("%Y-%m-%d %H:%M"), self.end.strftime("%Y-%m-%d %H:%M")
             f.write(f"# Header line: Timeline - {start},{end}; # Cluster - {len(self.clusters.keys())}\n")
         pd.DataFrame.from_records(recs).to_csv(fname, mode="a", header=True, index=False)
+        self.recs = recs
+        title = "Date: %s [%s-%s] UT | %s"%(df.time.tolist()[0].strftime("%Y-%m-%d"),
+                df.time.tolist()[0].strftime("%H.%M"), df.time.tolist()[-1].strftime("%H.%M"), self.rad.upper())
+        fname = self.fig_folder + "04_gate_boundary_track.png"
+        beam_gate_boundary_tracker(recs, glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
+                fname=fname)
         return
     
     def cluster_identification(self, df, qntl=[0.05,0.95]):

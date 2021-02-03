@@ -26,7 +26,7 @@ import json
 import utils
 from fit_records import fetch_print_fit_rec
 from get_fit_data import FetchData
-from clustering_algo import BeamGateFilter, TimeGateFilter
+from clustering_algo import BeamGateFilter, TimeGateFilter, BeamGateTimeFilter
 
 def run_fitacf_amgeo_clustering(rad, start, end, gflg_cast, _dict_):
     """
@@ -65,16 +65,8 @@ def run_fitacf_amgeo_clustering(rad, start, end, gflg_cast, _dict_):
         logger.error(f"gflg_cast has to be in {gflg_cast_types}")
         raise Exception(f"gflg_cast has to be in {gflg_cast_types}")
     if _dict_["kind"] == "bgc":
-        dn, dur = start, _dict_["dur"]
-        while dn < end:
-            scan_info = fetch_print_fit_rec(rad, dn, dn + dt.timedelta(minutes=5), file_type=_dict_["ftype"])
-            io = FetchData( rad, [dn, dn + dt.timedelta(minutes=dur)], ftype=_dict_["ftype"], verbose=_dict_["verbose"])
-            _, scans = io.fetch_data(by="scan", scan_prop=scan_info)
-            df = io.scans_to_pandas(scans)
-            _dict_["start"], _dict_["end"] = dn, dn + dt.timedelta(minutes=dur)
-            bgc = BeamGateFilter(rad, scans, _dict_=_dict_)
-            bgc.doFilter(io, themis=scan_info["t_beam"])
-            dn = dn + dt.timedelta(minutes=dur)
+        bgtf = BeamGateTimeFilter(rad, _dict_)
+        scan_info = bgtf.run_bgc_algo().run_time_track_algo()
     elif _dict_["kind"] == "tgc":
         scan_info = fetch_print_fit_rec(rad, start, start + dt.timedelta(minutes=5), file_type=_dict_["ftype"])
         io = FetchData( rad, [start, end], ftype=_dict_["ftype"], verbose=_dict_["verbose"])
@@ -109,6 +101,7 @@ if __name__ == "__main__":
     parser.add_argument("-eps", "--eps", default=2, type=int, help="Epsilon for DBSCAN")
     parser.add_argument("-ms", "--min_samples", default=10, type=int, help="Min Samples for DBSCAN")
     parser.add_argument("-tw", "--tw", default=15, help="Duration of the time window for Time-Gate clustering in min (30 mins)")
+    parser.add_argument("-cf", "--check_file", action="store_false", help="Check BGC file (default True)")
     args = parser.parse_args()
     logger.info(f"Simulation run using fitacf_amgeo_cluster.__main__")
     _dic_ = {}

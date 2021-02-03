@@ -560,6 +560,32 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
     #fig.savefig(fname.replace("png", "pdf"), bbox_inches="tight")
     return
 
+def beam_gate_boundary_tracker(recs, glim, blim, title, fname):
+    """ Beam gate boundary plots showing the distribution of clusters """
+    fig, ax = plt.subplots(figsize=(6,4), nrows=1, ncols=1, dpi=180)
+    ax.set_ylabel("Gates", fontdict=font)
+    ax.set_xlabel("Beams", fontdict=font)
+    ax.set_xlim(blim[0]-1, blim[1] + 2)
+    ax.set_ylim(glim[0], glim[1])
+    for b in range(blim[0], blim[1] + 1):
+        ax.axvline(b, lw=0.3, color="gray", ls="--")
+    ax.axvline(b+1, lw=0.3, color="gray", ls="--")
+    fonttext["size"] = 6
+    for rec in recs:
+        p = plt.Rectangle((rec["beam_low"], rec["gate_low"]), rec["beam_high"]-rec["beam_low"]+1,
+                          rec["gate_high"]-rec["gate_low"]+1, fill=False, ls="--", lw=0.5, ec="g")
+        #p.set_clip_on(False)
+        ax.add_patch(p)
+        ax.scatter([rec["mean_beam"]+0.5],[rec["mean_gate"]+0.5],s=3,color="g")
+        ax.text(rec["mean_beam"]+1, rec["mean_gate"]+2, "C: %02d"%int(rec["cluster"]),
+                    ha="center", va="center",fontdict=fonttext)
+    ax.set_title(title)
+    fonttext["size"] = 10
+    ax.set_xticks(np.arange(blim[0], blim[1] + 1) + 0.5)
+    ax.set_xticklabels(np.arange(blim[0], blim[1] + 1))
+    fig.savefig(fname, bbox_inches="tight")
+    return
+
 def beam_gate_boundary_plots(boundaries, clusters, clust_idf, glim, blim, title, fname, gflg_type=-1):
     """ Beam gate boundary plots showing the distribution of clusters """
     GS_CASES = ["Sudden [2004]", "Blanchard [2006]", "Blanchard [2009]"]
