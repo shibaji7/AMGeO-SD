@@ -18,6 +18,9 @@ from scipy import stats, ndimage
 from loguru import logger
 import traceback
 import json
+import cv2
+from scipy.optimize import curve_fit
+import traceback
 
 from sklearn.cluster import DBSCAN
 
@@ -41,6 +44,28 @@ class BeamGateTimeFilter(object):
                     "/beamgate/beam_gate_clusters.csv"
         self.beam_gate_time_tracker_file = utils.get_config("BASE_DIR") + self._dict_["sim_id"] + "/" + self.rad +\
                     "/beam_gate_time_tracker.json"
+        return
+    
+    def create_movie(self, fps=1):
+        """ Create movie from static image to track """
+        files = []
+        start, end = self._dict_["start"], self._dict_["end"]
+        dn, dur = start, self._dict_["dur"]
+        pathOut = utils.get_config("BASE_DIR") + self._dict_["sim_id"] + "/" + self.rad + "/01_beam_gate_time_tracker.avi"
+        while dn < end:
+            start, ed = dn, dn + dt.timedelta(minutes=dur)
+            fname = utils.get_config("BASE_DIR") + self._dict_["sim_id"] + "/" + self.rad +\
+                        "/beamgate/figs/%s_%s/"%(start.strftime("%Y-%m-%d-%H-%M"), ed.strftime("%Y-%m-%d-%H-%M")) +\
+                        "04_gate_boundary_track.png"
+            if os.path.exists(fname): files.append(fname)
+            dn = dn + dt.timedelta(minutes=dur)
+        frame_array = [cv2.imread(f) for f in files]
+        height, width, layers = frame_array[0].shape
+        size = (width,height)
+        out = cv2.VideoWriter(pathOut,cv2.VideoWriter_fourcc(*"MJPG"), fps, size)
+        for frame in frame_array:
+            out.write(frame)
+        out.release()
         return
     
     def run_bgc_algo(self):
@@ -67,6 +92,7 @@ class BeamGateTimeFilter(object):
             dn, dur = start, self._dict_["dur"]
             self.scan_info = fetch_print_fit_rec(self.rad, dn, dn + dt.timedelta(minutes=5), file_type=self._dict_["ftype"])
             self.recdf = pd.read_csv(self.beam_gate_clusters_file)
+        self.create_movie()
         return self
     
     def compare_box(self, box_range, box_point):
@@ -321,8 +347,16 @@ class BeamGateFilter(object):
                 fname=fname, gflg_type=self.gflg_type)
         fname = self.fig_folder + "05_general_stats.png"
         general_stats(self.gen_summary, fname=fname)
+        self.curves = {}
         for c in self.clusters.keys():
             cluster = self.clusters[c]
+            try:
+                if len(self.clusters[c]) > 3: self.curves[c] = self.fit_curves(cluster)
+            except:
+                try:
+                    self.curves[c] = self.fit_curves(cluster, "line")
+                except: logger.error(f"Error in fit_curves(line), cluster_stats, Cluster #{c}")
+                logger.error(f"Error in fit_curves(parabola), cluster_stats, Cluster #{c}")
             try:
                 loc_folder = self.fig_folder + "clust_stats/"
                 if not os.path.exists(loc_folder): os.system("mkdir " + loc_folder)
@@ -340,13 +374,24 @@ class BeamGateFilter(object):
                 logger.error(f"Error in cluster stats, individal_cluster_stats, Cluster #{c}")
         self.save_cluster_info(df.copy())
         return
+    
+    def fit_curves(self, cluster, curve="parabola"):
+        """ Fit a parabola through beam versus gate edges """
+        beams, ubs, lbs = np.sort([cx["bmnum"] for cx in cluster]), [cx["ub"] for cx in cluster], [cx["lb"] for cx in cluster]
+        if curve=="parabola": func = lambda x, ac, bc: ac*np.sqrt(x)-bc
+        elif curve=="line": func = lambda x, ac, bc: ac + bc*x
+        popt_ubs, _ = curve_fit(func, beams, ubs)
+        popt_lbs, _ = curve_fit(func, beams, lbs)
+        popt_ubs, popt_lbs = np.round(popt_ubs, 2), np.round(popt_lbs, 2)
+        return {"beams": beams, "p_ubs": popt_ubs, "p_lbs": popt_lbs, "curve": curve}
 
     def save_cluster_info(self, df):
         fname = self.fig_folder + "02_cluster_info.csv"
         recs = []
         for c in self.clusters.keys():
             if len(self.clusters[c]) > 3:
-                Cm = {"time_intv":self.time_intv, "cluster":c, "beam_low":np.nan, "beam_high":np.nan,
+                Cm = {"start":self.start.strftime("%Y-%m-%dT%H:%M:%S"), "end": self.end.strftime("%Y-%m-%dT%H:%M:%S"),
+                      "time_intv":self.time_intv, "cluster":c, "beam_low":np.nan, "beam_high":np.nan,
                       "gate_low":np.nan, "gate_high":np.nan, "mean_beam":np.nan, "mean_gate":np.nan}
                 mbeam, mgate = 0, 0
                 beamdiv = 0
@@ -372,7 +417,7 @@ class BeamGateFilter(object):
         title = "Date: %s [%s-%s] UT | %s"%(df.time.tolist()[0].strftime("%Y-%m-%d"),
                 df.time.tolist()[0].strftime("%H.%M"), df.time.tolist()[-1].strftime("%H.%M"), self.rad.upper())
         fname = self.fig_folder + "04_gate_boundary_track.png"
-        beam_gate_boundary_tracker(recs, glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
+        beam_gate_boundary_tracker(recs, self.curves, glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
                 fname=fname)
         return
     
