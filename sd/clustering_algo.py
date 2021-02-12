@@ -11,6 +11,9 @@ __maintainer__ = "Chakraborty, S."
 __email__ = "shibaji7@vt.edu"
 __status__ = "Research"
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import os
 import numpy as np
 import pandas as pd
@@ -85,6 +88,7 @@ class BeamGateTimeFilter(object):
                 dn = dn + dt.timedelta(minutes=dur)
                 ti += 1
                 rec_list.extend(bgc.recs)
+                plt.close()
             self.recdf = pd.DataFrame.from_records(rec_list)
             self.recdf.to_csv(self.beam_gate_clusters_file, header=True, index=False)
         else: 
