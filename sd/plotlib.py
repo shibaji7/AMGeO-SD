@@ -572,14 +572,15 @@ def beam_gate_boundary_tracker(recs, curves, glim, blim, title, fname):
     ax.axvline(b+1, lw=0.3, color="gray", ls="--")
     fonttext["size"] = 6
     for rec in recs:
-        curve = curves[rec["cluster"]]
-        if len(curve) > 0: 
-            if curve["curve"]=="parabola": func = lambda x, ac, bc: ac*np.sqrt(x)-bc
-            elif curve["curve"]=="line": func = lambda x, ac, bc: ac + bc*x
-            beams = curve["beams"].tolist() + [np.max(curve["beams"])+1]
-            ax.plot(beams, func(beams, *curve["p_ubs"]), "b--", lw=0.5)
-            ax.plot(beams, func(beams, *curve["p_lbs"]), "g--", lw=0.5)
-            ax.plot(beams, 0.5*(func(beams, *curve["p_ubs"])+func(beams, *curve["p_lbs"])), "k-", lw=0.5)
+        if curves is not None:
+            curve = curves[rec["cluster"]]
+            if len(curve) > 0: 
+                if curve["curve"]=="parabola": func = lambda x, ac, bc: ac*np.sqrt(x)-bc
+                elif curve["curve"]=="line": func = lambda x, ac, bc: ac + bc*x
+                beams = curve["beams"].tolist() + [np.max(curve["beams"])+1]
+                ax.plot(beams, func(beams, *curve["p_ubs"]), "b--", lw=0.5)
+                ax.plot(beams, func(beams, *curve["p_lbs"]), "g--", lw=0.5)
+                ax.plot(beams, 0.5*(func(beams, *curve["p_ubs"])+func(beams, *curve["p_lbs"])), "k-", lw=0.5)
         p = plt.Rectangle((rec["beam_low"], rec["gate_low"]), rec["beam_high"]-rec["beam_low"]+1,
                           rec["gate_high"]-rec["gate_low"]+1, fill=False, ls="--", lw=0.5, ec="r")
         ax.add_patch(p)

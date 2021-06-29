@@ -47,12 +47,13 @@ class BeamGateTimeFilter(object):
                     "/beamgate/beam_gate_clusters.csv"
         self.beam_gate_time_tracker_file = utils.get_config("BASE_DIR") + self._dict_["sim_id"] + "/" + self.rad +\
                     "/beam_gate_time_tracker.json"
+        self.movie_start, self.movie_end = self._dict_["start"], self._dict_["end"]
         return
     
     def create_movie(self, fps=1):
         """ Create movie from static image to track """
         files = []
-        start, end = self._dict_["start"], self._dict_["end"]
+        start, end = self.movie_start, self.movie_end
         dn, dur = start, self._dict_["dur"]
         pathOut = utils.get_config("BASE_DIR") + self._dict_["sim_id"] + "/" + self.rad + "/01_beam_gate_time_tracker.avi"
         while dn < end:
@@ -358,7 +359,7 @@ class BeamGateFilter(object):
                 if len(self.clusters[c]) > 3: self.curves[c] = self.fit_curves(cluster)
             except:
                 try:
-                    self.curves[c] = self.fit_curves(cluster, "line")
+                    self.curves[c] = self.fit_curves(cluster, "parabola")
                 except: logger.error(f"Error in fit_curves(line), cluster_stats, Cluster #{c}")
                 logger.error(f"Error in fit_curves(parabola), cluster_stats, Cluster #{c}")
             try:
@@ -379,9 +380,17 @@ class BeamGateFilter(object):
         self.save_cluster_info(df.copy())
         return
     
-    def fit_curves(self, cluster, curve="parabola"):
+    def fit_curves(self, cluster, curve="line"):
         """ Fit a parabola through beam versus gate edges """
-        beams, ubs, lbs = np.sort([cx["bmnum"] for cx in cluster]), [cx["ub"] for cx in cluster], [cx["lb"] for cx in cluster]
+        
+        dats = {}
+        for cx in cluster:
+            if cx["bmnum"] not in dats.keys(): dats[cx["bmnum"]] = {"beams": cx["bmnum"], "ub": cx["ub"], "lb": cx["lb"]}
+            else:
+                dats[cx["bmnum"]]["ub"] = cx["ub"] if dats[cx["bmnum"]]["ub"] < cx["ub"] else dats[cx["bmnum"]]["ub"]
+                dats[cx["bmnum"]]["lb"] = cx["lb"] if dats[cx["bmnum"]]["lb"] > cx["lb"] else dats[cx["bmnum"]]["lb"]
+        beams, ubs, lbs = np.sort([k for k in dats.keys()]), np.sort([dats[k]["ub"] for k in dats.keys()]),\
+                            np.sort([dats[k]["lb"] for k in dats.keys()])
         if curve=="parabola": func = lambda x, ac, bc: ac*np.sqrt(x)-bc
         elif curve=="line": func = lambda x, ac, bc: ac + bc*x
         popt_ubs, _ = curve_fit(func, beams, ubs)
@@ -421,6 +430,8 @@ class BeamGateFilter(object):
         title = "Date: %s [%s-%s] UT | %s"%(df.time.tolist()[0].strftime("%Y-%m-%d"),
                 df.time.tolist()[0].strftime("%H.%M"), df.time.tolist()[-1].strftime("%H.%M"), self.rad.upper())
         fname = self.fig_folder + "04_gate_boundary_track.png"
+        beam_gate_boundary_tracker(recs, None, glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title, fname=fname)
+        fname = self.fig_folder + "06_gate_boundary_track.png"
         beam_gate_boundary_tracker(recs, self.curves, glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
                 fname=fname)
         return
