@@ -11,6 +11,9 @@ __maintainer__ = "Chakraborty, S."
 __email__ = "shibaji7@vt.edu"
 __status__ = "Research"
 
+import sys
+sys.path.append("tools/")
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -34,6 +37,21 @@ from boxcar_filter import Filter
 
 from plotlib import *
 from matplotlib.dates import date2num
+import multiprocessing as mp
+
+from string import ascii_uppercase
+
+
+def get_mean_sza(dn, mbeam, mgate, rad="bks"):
+    import rad_fov
+    from pysolar.solar import get_altitude
+    import pydarn
+    hdw = pydarn.read_hdw_file(rad)
+    rfov = rad_fov.CalcFov(hdw=hdw, altitude=300.)
+    lat, lon = rfov.latFull[mbeam, mgate], rfov.lonFull[mbeam, mgate]
+    dn = dn.replace(tzinfo=dt.timezone.utc)
+    sza = np.round(90. - get_altitude(lat, lon, dn), 2)
+    return sza
 
 class BeamGateTimeFilter(object):
     """ Class to filter middle latitude radars """
@@ -48,6 +66,23 @@ class BeamGateTimeFilter(object):
         self.beam_gate_time_tracker_file = utils.get_config("BASE_DIR") + self._dict_["sim_id"] + "/" + self.rad +\
                     "/beam_gate_time_tracker.json"
         self.movie_start, self.movie_end = self._dict_["start"], self._dict_["end"]
+        self.cores = 16
+        
+        self.out_dir = utils.get_config("BASE_DIR") + _dict_["sim_id"] + "/" + self.rad + "/"
+        self.parse_out_dic()
+        return
+    
+    def parse_out_dic(self):
+        """
+        Parse output directory and folders
+        """
+        self.out = {}
+        self.out["out_dir"] = self.out_dir
+        self.out["out_files"] = {}
+        self.out["out_files"]["h5_file"] = self.out_dir + "data_{s}_{e}.h5".format(s=self._dict_["start"].strftime("%Y%m%d.%H%M"),
+                                                                     e=self._dict_["end"].strftime("%Y%m%d.%H%M"))
+        self.out["out_files"]["nc_file"] = self.out_dir + "data_{s}_{e}.nc".format(s=self._dict_["start"].strftime("%Y%m%d.%H%M"),
+                                                                     e=self._dict_["end"].strftime("%Y%m%d.%H%M"))
         return
     
     def create_movie(self, fps=1):
@@ -73,16 +108,30 @@ class BeamGateTimeFilter(object):
         return
     
     def run_bgc_algo(self):
+        s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time", "intt.sc", "intt.us", "mppul"]
+        v_params=["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde", "v_mad"]
+        self.filter = Filter(thresh=0.4)
+        self.scan_map = {}
         if self._dict_["start"] and not os.path.exists(self.beam_gate_clusters_file):
             rec_list = []
-            start, end = self._dict_["start"], self._dict_["end"]
+            start, end_date = self._dict_["start"], self._dict_["end"]
             dn, dur = start, self._dict_["dur"]
             ti = 0
-            while dn < end:
+            p = mp.Pool(self.cores)
+            while dn < end_date:
                 self.scan_info = fetch_print_fit_rec(self.rad, dn, dn + dt.timedelta(minutes=5), file_type=self._dict_["ftype"])
-                io = FetchData( self.rad, [dn, dn + dt.timedelta(minutes=dur)], ftype=self._dict_["ftype"], verbose=self._dict_["verbose"])
+                start = dn - dt.timedelta(minutes=self.scan_info["s_time"])
+                end = dn + dt.timedelta(minutes=dur) + dt.timedelta(minutes=2*self.scan_info["s_time"])
+                io = FetchData( self.rad, [start, end], ftype=self._dict_["ftype"], verbose=self._dict_["verbose"])
                 _, scans = io.fetch_data(by="scan", scan_prop=self.scan_info)
-                df = io.scans_to_pandas(scans)
+                nscans, fscans = [], []
+                logger.info(f" Into median filtering (cores): {self.cores}")
+                for i in range(1,len(scans)-2):
+                    nscans.append(scans[i-1:i+2])
+                for sn in p.map(self.filter.doFilter, nscans):
+                    fscans.append(sn)
+                df = io.scans_to_pandas(fscans, s_params, v_params)
+                self.scan_map[dn] = df.copy()
                 self._dict_["start"], self._dict_["end"] = dn, dn + dt.timedelta(minutes=dur)
                 bgc = BeamGateFilter(self.rad, scans, ti, eps=self.eps, min_samples=self.min_samples, _dict_=self._dict_)
                 bgc.doFilter(io, themis=self.scan_info["t_beam"])
@@ -97,7 +146,7 @@ class BeamGateTimeFilter(object):
             dn, dur = start, self._dict_["dur"]
             self.scan_info = fetch_print_fit_rec(self.rad, dn, dn + dt.timedelta(minutes=5), file_type=self._dict_["ftype"])
             self.recdf = pd.read_csv(self.beam_gate_clusters_file)
-        self.create_movie()
+        #self.create_movie()
         return self
     
     def compare_box(self, box_range, box_point):
@@ -134,7 +183,30 @@ class BeamGateTimeFilter(object):
             i += 1
         with open(self.beam_gate_time_tracker_file, "w") as f: f.write(json.dumps(clusters, sort_keys=True, indent=4))
         return self.scan_info
-
+    
+    def save_data(self, clusters=["A"]):
+        if type(clusters) is str and clusters == "all": logger.info(" Save all cluster data.")
+        elif type(clusters) is list:
+            with open(self.beam_gate_time_tracker_file, "r") as f: clusters_obj = json.loads("\n".join(f.readlines()))
+            for c in clusters:
+                objs = clusters_obj[c]
+                start, end = dt.datetime.strptime(objs[0]["start"], "%Y-%m-%dT%H:%M:%S"),\
+                    dt.datetime.strptime(objs[-1]["end"], "%Y-%m-%dT%H:%M:%S")
+                fname = self.out["out_files"]["h5_file"]
+                u = pd.DataFrame()
+                for i, o in enumerate(objs):
+                    start, end = dt.datetime.strptime(o["start"], "%Y-%m-%dT%H:%M:%S"),\
+                    dt.datetime.strptime(o["end"], "%Y-%m-%dT%H:%M:%S")
+                    gate_high, gate_low = o["gate_high"], o["gate_low"]
+                    beam_high, beam_low = o["beam_high"], o["beam_low"]
+                    x = self.scan_map[start]
+                    x = x[(x.slist>=gate_low) & (x.slist<=gate_high) & (x.bmnum>=beam_low) & (x.bmnum<=beam_high)]
+                    u = pd.concat([u, x])
+                u.to_hdf(fname, key="df")
+                os.system("gzip " + fname)
+        return
+    
+    
 class BeamGateFilter(object):
     """ Class to filter middle latitude radars """
 
@@ -194,6 +266,7 @@ class BeamGateFilter(object):
         rng, eco = np.array(du.groupby(["slist"]).count().reset_index()["slist"]),\
                 np.array(du.groupby(["slist"]).count().reset_index()["p_l"])
         Rng, Eco = np.arange(np.max(du.slist)+1), np.zeros((np.max(du.slist)+1))
+        tfreq = np.round(np.mean(du.tfreq/1e3), 2)
         for e, r in zip(eco, rng):
             Eco[Rng.tolist().index(r)] = e
         eco, Eco = utils.smooth(eco, self.window), utils.smooth(Eco, self.window)
@@ -205,8 +278,9 @@ class BeamGateFilter(object):
             x = du[du.labels==r]
             glims[r] = [np.min(x.slist), np.max(x.slist)]
             names[r] = "C"+str(j)
-            if r >= 0: self.boundaries[bm].append({"peak": Rng[np.min(x.slist) + Eco[np.min(x.slist):np.max(x.slist)].argmax()],
-                "ub": np.max(x.slist), "lb": np.min(x.slist), "value": np.max(eco)*xpt, "bmnum": bm, "echo": len(x), "sound": sb[0]})
+            if r >= 0: self.boundaries[bm].append({"peak": Rng[np.min(x.slist) + Eco[np.min(x.slist):np.max(x.slist)+1].argmax()],
+                "ub": np.max(x.slist), "lb": np.min(x.slist), "value": np.max(eco)*xpt, "bmnum": bm, "echo": len(x), "sound": sb[0],
+                "tfreq": tfreq})
         logger.info(f" Individual clster detected: {set(du.labels)}")
         loc_folder = self.fig_folder + "gate_summary/"
         if not os.path.exists(loc_folder): os.system("mkdir -p " + loc_folder)
@@ -271,6 +345,7 @@ class BeamGateFilter(object):
             sb[2] = len(self.scans)
         rng, eco = np.array(du.groupby(["slist"]).count().reset_index()["slist"]),\
                 np.array(du.groupby(["slist"]).count().reset_index()["p_l"])
+        tfreq = np.round(np.mean(du.tfreq/1e3), 2)
         glims, labels = {}, []
         Rng, Eco = np.arange(np.max(du.slist)+1), np.zeros((np.max(du.slist)+1))
         for e, r in zip(eco, rng):
@@ -293,7 +368,8 @@ class BeamGateFilter(object):
                 self.boundaries[bm].append({"peak": peaks[r], "ub": troughs[r+1], "lb": troughs[r], 
                                             "value": np.max(eco)*xpt, "bmnum": bm, 
                                             "echo": len(du[(du["slist"]<=troughs[r+1]) 
-                                                           & (du["slist"]>=troughs[r])]), "sound": sb[0]})
+                                                           & (du["slist"]>=troughs[r])]), "sound": sb[0],
+                                           "tfreq":tfreq})
 
         du["labels"] =  np.where(np.isnan(du["labels"]), -1, du["labels"])
         logger.info(f" Individual clster detected:  {set(du.labels)}")
@@ -405,7 +481,8 @@ class BeamGateFilter(object):
             if len(self.clusters[c]) > 3:
                 Cm = {"start":self.start.strftime("%Y-%m-%dT%H:%M:%S"), "end": self.end.strftime("%Y-%m-%dT%H:%M:%S"),
                       "time_intv":self.time_intv, "cluster":c, "beam_low":np.nan, "beam_high":np.nan,
-                      "gate_low":np.nan, "gate_high":np.nan, "mean_beam":np.nan, "mean_gate":np.nan}
+                      "gate_low":np.nan, "gate_high":np.nan, "mean_beam":np.nan, "mean_gate":np.nan, 
+                      "mean_tfreq":np.nan, "mean_sza": np.nan}
                 mbeam, mgate = 0, 0
                 beamdiv = 0
                 for i, u in enumerate(self.clusters[c]):
@@ -414,6 +491,7 @@ class BeamGateFilter(object):
                     if i == 0: 
                         Cm["beam_low"], Cm["beam_high"] = u["bmnum"], u["bmnum"]
                         Cm["gate_low"], Cm["gate_high"] = u["lb"], u["ub"]
+                        Cm["mean_tfreq"] = u["tfreq"]
                     else:
                         Cm["beam_low"] = u["bmnum"] if u["bmnum"] < Cm["beam_low"] else Cm["beam_low"]
                         Cm["beam_high"] = u["bmnum"] if u["bmnum"] > Cm["beam_high"] else Cm["beam_high"]
@@ -421,6 +499,7 @@ class BeamGateFilter(object):
                         Cm["gate_high"] = u["ub"] if u["ub"] > Cm["gate_high"] else Cm["gate_high"]
                 mgate = int((Cm["gate_low"]+Cm["gate_high"])/2)
                 Cm["mean_gate"], Cm["mean_beam"] = mgate, int(mbeam/beamdiv)
+                Cm["mean_sza"] = get_mean_sza(df.time.tolist()[int(len(df)/2)], Cm["mean_beam"], Cm["mean_gate"], self.rad)
                 recs.append(Cm)
         with open(fname, "w") as f:
             start, end = self.start.strftime("%Y-%m-%d %H:%M"), self.end.strftime("%Y-%m-%d %H:%M")
@@ -432,8 +511,8 @@ class BeamGateFilter(object):
         fname = self.fig_folder + "04_gate_boundary_track.png"
         beam_gate_boundary_tracker(recs, None, glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title, fname=fname)
         fname = self.fig_folder + "06_gate_boundary_track.png"
-        beam_gate_boundary_tracker(recs, self.curves, glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
-                fname=fname)
+        #beam_gate_boundary_tracker(recs, self.curves, glim=(0, 100), blim=(np.min(df.bmnum), np.max(df.bmnum)), title=title,
+        #        fname=fname)
         return
     
     def cluster_identification(self, df, qntl=[0.05,0.95]):

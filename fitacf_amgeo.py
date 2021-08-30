@@ -63,8 +63,8 @@ def run_fitacf_amgeo_simulation(rad, start, end, gflg_cast, _dict_):
     if gflg_cast not in gflg_cast_types: 
         logger.error(f"gflg_cast has to be in {gflg_cast_types}")
         raise Exception(f"gflg_cast has to be in {gflg_cast_types}")
-    scan_info = fetch_print_fit_rec(rad, start, start + dt.timedelta(minutes=5), file_type=file_type=_dict_["ftype"])
-    sim = Simulate(rad, [start, end], scan_info, verbose, _dict_)
+    scan_info = fetch_print_fit_rec(rad, start, start + dt.timedelta(minutes=5), file_type=_dict_["ftype"])
+    sim = Simulate(rad, [start, end], scan_info, _dict_["verbose"], _dict_)
     return sim.out, scan_info
 
 # Script run can also be done via main program

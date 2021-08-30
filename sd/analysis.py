@@ -23,12 +23,15 @@ import utils
 from get_fit_data import FetchData
 from boxcar_filter import Filter
 
+import multiprocessing as mp
+from functools import partial
+
 np.random.seed(0)
 
 class Simulate(object):
     """Class to simulate all boxcar filters for duration of the time"""
 
-    def __init__(self, rad, date_range, scan_prop, verbose=False, _dict_={}):
+    def __init__(self, rad, date_range, scan_prop, verbose=False, _dict_={}, cores=16):
         """
         initialize all variables
         rad: radar code
@@ -47,10 +50,13 @@ class Simulate(object):
         _, _, self.rad_type = utils.get_radar(self.rad)
         self._create_dates()
         self._fetch()
+        self.cores = cores
+        self.p0 = mp.Pool(self.cores)
+        self.out_dir = utils.get_config("BASE_DIR") + _dict_["sim_id"] + "/" + self.rad + "/"
+        self.parse_out_dic()
         if hasattr(self, "clear") and self.clear: self._clear()
         if hasattr(self, "dofilter") and self.dofilter: self._dofilter()
         if hasattr(self, "save") and self.save: self._to_files()
-        self.parse_out_dic()
         return
     
     def parse_out_dic(self):
@@ -83,8 +89,7 @@ class Simulate(object):
         
         s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time", "intt.sc", "intt.us", "mppul"]
         v_params=["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde", "v_mad"]
-        fname = self.out_dir + "data_{s}_{e}.h5".format(s=self.date_range[0].strftime("%Y%m%d.%H%M"),
-                                                        e=self.date_range[1].strftime("%Y%m%d.%H%M"))
+        fname = self.out["out_files"]["h5_file"]
         _u = {key: [] for key in v_params + s_params}
         _du = {key: [] for key in v_params + s_params}
         blen, glen = 0, 110
@@ -192,13 +197,18 @@ class Simulate(object):
         """
         Do filtering for all scan
         """
-        self.fscans = []
+        self.fscans, fscans = [], []
         if self.verbose: logger.info("Very slow method to boxcar filtering.")
-        for i, e in enumerate(self.dates):
+        for i in range(len(self.dates)):
             scans = self.scans[i:i+3]
-            if np.mod(i,10)==0: logger.info(f"Running median filter for scan at - {e}")
-            self.fscans.append(self.filter.doFilter(scans, gflg_type=self.gflg_type))
-        if self.verbose: logger.info(f"Total number of scans invoked by median filter {i}")
+            fscans.append(scans)
+        j = 0
+        partial_filter = partial(self.filter.doFilter, gflg_type=self.gflg_type)
+        for s in self.p0.map(partial_filter, fscans):
+            if np.mod(j,10)==0: logger.info(f"Running median filter for scan at - {self.dates[j]}")
+            self.fscans.append(s)
+            j += 1
+        if self.verbose: logger.info(f"Total number of scans invoked by median filter {j}")
         return
 
     def _fetch(self):

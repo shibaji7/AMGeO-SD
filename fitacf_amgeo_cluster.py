@@ -67,6 +67,7 @@ def run_fitacf_amgeo_clustering(rad, start, end, gflg_cast, _dict_):
     if _dict_["kind"] == "bgc":
         bgtf = BeamGateTimeFilter(rad, _dict_)
         scan_info = bgtf.run_bgc_algo().run_time_track_algo()
+        #bgtf.save_data()
     elif _dict_["kind"] == "tgc":
         scan_info = fetch_print_fit_rec(rad, start, start + dt.timedelta(minutes=5), file_type=_dict_["ftype"])
         io = FetchData( rad, [start, end], ftype=_dict_["ftype"], verbose=_dict_["verbose"])
@@ -80,9 +81,9 @@ def run_fitacf_amgeo_clustering(rad, start, end, gflg_cast, _dict_):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--rad", default="bks", help="SuperDARN radar code (default bks)")
-    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,16,16), help="Start date (default 2015-03-17T03)", 
+    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,17), help="Start date (default 2015-03-17T03)", 
             type=prs.parse)
-    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,16,16,30), help="End date (default 2015-03-17T03:30)", 
+    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,17,12), help="End date (default 2015-03-17T03:30)", 
             type=prs.parse)
     parser.add_argument("-du", "--dur", default=30, help="Duration of the time window in min (30 mins)")
     parser.add_argument("-f", "--dofilter", action="store_false", help="Do filtering (default True)")

@@ -34,7 +34,7 @@ class CalcFov(object):
             if not ngates:
                 ngates = hdw.gates
             if not bmsep:
-                bmsep = hdw.beam_seperation
+                bmsep = hdw.beam_separation
             if not recrise:
                 recrise = hdw.rx_rise_time
             if not siteLat:
