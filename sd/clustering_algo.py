@@ -56,7 +56,7 @@ def get_mean_sza(dn, mbeam, mgate, rad="bks"):
 class BeamGateTimeFilter(object):
     """ Class to filter middle latitude radars """
     
-    def __init__(self, rad, _dict_={}):
+    def __init__(self, rad, _dict_={}, cores=16):
         self.rad = rad
         self._dict_ = _dict_
         self.eps = self._dict_["eps"]
@@ -66,7 +66,9 @@ class BeamGateTimeFilter(object):
         self.beam_gate_time_tracker_file = utils.get_config("BASE_DIR") + self._dict_["sim_id"] + "/" + self.rad +\
                     "/beam_gate_time_tracker.json"
         self.movie_start, self.movie_end = self._dict_["start"], self._dict_["end"]
-        self.cores = 16
+        self.cores = cores
+        for p in _dict_.keys():
+            setattr(self, p, _dict_[p])
         
         self.out_dir = utils.get_config("BASE_DIR") + _dict_["sim_id"] + "/" + self.rad + "/"
         self.parse_out_dic()
@@ -76,13 +78,15 @@ class BeamGateTimeFilter(object):
         """
         Parse output directory and folders
         """
-        self.out = {}
+        self.out = {"clustered": True}
         self.out["out_dir"] = self.out_dir
-        self.out["out_files"] = {}
-        self.out["out_files"]["h5_file"] = self.out_dir + "data_{s}_{e}.h5".format(s=self._dict_["start"].strftime("%Y%m%d.%H%M"),
-                                                                     e=self._dict_["end"].strftime("%Y%m%d.%H%M"))
-        self.out["out_files"]["nc_file"] = self.out_dir + "data_{s}_{e}.nc".format(s=self._dict_["start"].strftime("%Y%m%d.%H%M"),
-                                                                     e=self._dict_["end"].strftime("%Y%m%d.%H%M"))
+        self.out["out_files"] = {"h5_file": {"template":None, "files":[]}, "nc_file": {"template":None, "files":[]}}
+        self.out["out_files"]["h5_file"]["template"] = self.out_dir + "data_{s}_{e}_%s.h5"\
+            .format(s=self._dict_["start"].strftime("%Y%m%d.%H%M"),
+                    e=self._dict_["end"].strftime("%Y%m%d.%H%M"))
+        self.out["out_files"]["nc_file"]["template"] = self.out_dir + "data_{s}_{e}_%s.nc"\
+            .format(s=self._dict_["start"].strftime("%Y%m%d.%H%M"),
+                    e=self._dict_["end"].strftime("%Y%m%d.%H%M"))
         return
     
     def create_movie(self, fps=1):
@@ -109,8 +113,9 @@ class BeamGateTimeFilter(object):
     
     def run_bgc_algo(self):
         s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time", "intt.sc", "intt.us", "mppul"]
-        v_params=["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde", "v_mad"]
-        self.filter = Filter(thresh=0.4)
+        fv_params=["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde", "v_mad"]
+        v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"]
+        self.filter = Filter(thresh=self.thresh, pbnd=[self.lth, self.uth], pth=self.pth, verbose=self.verbose)
         self.scan_map = {}
         if self._dict_["start"] and not os.path.exists(self.beam_gate_clusters_file):
             rec_list = []
@@ -118,6 +123,7 @@ class BeamGateTimeFilter(object):
             dn, dur = start, self._dict_["dur"]
             ti = 0
             p = mp.Pool(self.cores)
+            start_scnum = 0
             while dn < end_date:
                 self.scan_info = fetch_print_fit_rec(self.rad, dn, dn + dt.timedelta(minutes=5), file_type=self._dict_["ftype"])
                 start = dn - dt.timedelta(minutes=self.scan_info["s_time"])
@@ -130,8 +136,9 @@ class BeamGateTimeFilter(object):
                     nscans.append(scans[i-1:i+2])
                 for sn in p.map(self.filter.doFilter, nscans):
                     fscans.append(sn)
-                df = io.scans_to_pandas(fscans, s_params, v_params)
-                self.scan_map[dn] = df.copy()
+                fD = io.scans_to_pandas(fscans, s_params, fv_params, start_scnum)
+                D = io.scans_to_pandas(scans, s_params, v_params, start_scnum)
+                self.scan_map[dn] = (fD, D)
                 self._dict_["start"], self._dict_["end"] = dn, dn + dt.timedelta(minutes=dur)
                 bgc = BeamGateFilter(self.rad, scans, ti, eps=self.eps, min_samples=self.min_samples, _dict_=self._dict_)
                 bgc.doFilter(io, themis=self.scan_info["t_beam"])
@@ -139,6 +146,7 @@ class BeamGateTimeFilter(object):
                 ti += 1
                 rec_list.extend(bgc.recs)
                 plt.close()
+                start_scnum += len(fscans)
             self.recdf = pd.DataFrame.from_records(rec_list)
             self.recdf.to_csv(self.beam_gate_clusters_file, header=True, index=False)
         else: 
@@ -184,26 +192,35 @@ class BeamGateTimeFilter(object):
         with open(self.beam_gate_time_tracker_file, "w") as f: f.write(json.dumps(clusters, sort_keys=True, indent=4))
         return self.scan_info
     
-    def save_data(self, clusters=["A"]):
-        if type(clusters) is str and clusters == "all": logger.info(" Save all cluster data.")
-        elif type(clusters) is list:
+    def save_data(self):
+        v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"]
+        if os.path.exists(self.beam_gate_time_tracker_file):
+            logger.info(" Save all cluster data.")
             with open(self.beam_gate_time_tracker_file, "r") as f: clusters_obj = json.loads("\n".join(f.readlines()))
-            for c in clusters:
+            clusters = clusters_obj.keys()
+            h5fname = self.out["out_files"]["h5_file"]["template"]
+            for j, c in enumerate(clusters):
                 objs = clusters_obj[c]
                 start, end = dt.datetime.strptime(objs[0]["start"], "%Y-%m-%dT%H:%M:%S"),\
                     dt.datetime.strptime(objs[-1]["end"], "%Y-%m-%dT%H:%M:%S")
-                fname = self.out["out_files"]["h5_file"]
-                u = pd.DataFrame()
+                fDb, Db = pd.DataFrame(), pd.DataFrame()
                 for i, o in enumerate(objs):
                     start, end = dt.datetime.strptime(o["start"], "%Y-%m-%dT%H:%M:%S"),\
                     dt.datetime.strptime(o["end"], "%Y-%m-%dT%H:%M:%S")
                     gate_high, gate_low = o["gate_high"], o["gate_low"]
                     beam_high, beam_low = o["beam_high"], o["beam_low"]
-                    x = self.scan_map[start]
-                    x = x[(x.slist>=gate_low) & (x.slist<=gate_high) & (x.bmnum>=beam_low) & (x.bmnum<=beam_high)]
-                    u = pd.concat([u, x])
-                u.to_hdf(fname, key="df")
-                os.system("gzip " + fname)
+                    (fD, D) = self.scan_map[start]
+                    fD = fD[(fD.slist>=gate_low) & (fD.slist<=gate_high) & (fD.bmnum>=beam_low) & (fD.bmnum<=beam_high)]
+                    D = D[(D.slist>=gate_low) & (D.slist<=gate_high) & (D.bmnum>=beam_low) & (D.bmnum<=beam_high)]
+                    for p in v_params:
+                        fD["fitacf_"+p] = D[p]
+                    fDb, Db = pd.concat([fDb, fD]), pd.concat([Db, D])
+                fDb["cluster_tag"], Db["cluster_tag"] = c, c
+                fDb.to_hdf(h5fname%("f%02d"%int(c)), key="df")
+                Db.to_hdf(h5fname%("d%02d"%int(c)), key="df")
+                self.out["out_files"]["h5_file"]["files"].append(h5fname%("f%02d"%int(c)))
+                self.out["out_files"]["h5_file"]["files"].append(h5fname%("d%02d"%int(c)))
+        else: logger.error(" File not found - ", self.beam_gate_time_tracker_file)
         return
     
     
@@ -588,139 +605,6 @@ class BeamGateFilter(object):
             nested_cluster_find(mx["bmnum"] - 1, mx, j, case=-1)
             nested_cluster_find(mx["bmnum"] + 1, mx, j, case=1)
             j += 1
-        return
-    
-class TimeGateFilter(object):
-    """ Class to time filter middle latitude radars """
-    
-    def __init__(self, df, beams=[7], eps=5, min_samples=10, _dict_={}):
-        logger.info("Time Cluster by Beam")
-        self.dfx = df.copy()
-        self.beams = beams
-        self.eps = eps
-        self.min_samples = min_samples
-        self.boundaries = {}
-        self.clust_idf = {}
-        for p in _dict_.keys():
-            setattr(self, p, _dict_[p])
-        self.fig_folder = utils.get_config("BASE_DIR") + self.sim_id + "/" + self.rad + "/timegate/figs/"
-        if not os.path.exists(self.fig_folder): os.system("mkdir -p " + self.fig_folder)
-        return
-    
-    def run_codes(self):
-        for beam in self.beams:
-            start = self.dfx.time.tolist()[0]
-            end = start + dt.timedelta(minutes=self.tw)
-            k, j = 0, 0
-            labels = []
-            time_index = []
-            self.df = self.dfx[self.dfx.bmnum==beam]
-            while start <= self.df.time.tolist()[-1]:
-                u = self.df[(self.df.time>=start) & (self.df.time<=end)]
-                ds = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(u[["slist"]].values)
-                labs = ds.labels_
-                labs[labs>=0] = labs[labs>=0] + k
-                labels.extend(labs.tolist())
-                start = end
-                end = start + dt.timedelta(minutes=self.tw)
-                k += len(set(labs[labs>=0]))
-                time_index.extend([j]*len(labs))
-                j += 1
-            self.df["gate_labels"] = labels
-            self.df["labels"] = labels#[-1]*len(self.df)
-            self.df["time_index"] = time_index
-
-            K = len(self.df)
-            for ti in np.unique(time_index):
-                u = self.df[self.df.time_index==ti]
-                self.boundaries[ti] = []
-                for ix in np.unique(u.gate_labels):
-                    du = u[u.gate_labels==ix]
-                    if ix >= 0 and len(du)/len(u) > 0.5:
-                        self.boundaries[ti].append({"peak": du.slist.mean(), "ub": du.slist.max(), "lb": du.slist.min(),
-                                                    "value":len(du)/len(u), "time_index": ti, "gc": ix})
-
-            self.ltime, self.utime = np.min(time_index), np.max(time_index)
-            self.gc = []
-            for ti in np.unique(time_index):
-                clust = self.boundaries[ti]
-                for cl in clust:
-                    self.gc.append(cl)
-            self.sma_bgspace()
-            rti = RangeTimeIntervalPlot(110, self.df.time.tolist(), fig_title="Time-Gate Clustering", num_subplots=4)
-            rti.addParamPlot(self.df, beam, "Vel", p_max=200, p_min=-200, p_step=50, xlabel="", zparam="v", label="Velocity [m/s]")
-            rti.addParamPlot(self.df, beam, "Width", p_max=100, p_min=0, p_step=25, xlabel="", zparam="w_l", label="Spect. Width [m/s]")
-            rti.addParamPlot(self.df, beam, "Pow", p_max=30, p_min=0, p_step=6, xlabel="", zparam="p_l", label="Power [dB]")
-            rti.addCluster(self.df, beam, "TGC", xlabel="Time UT", label_clusters=True)
-            fname = self.fig_folder + "bm_{bm}_cluster_rti.png".format(bm="%02d"%beam)
-            rti.save(fname)
-            rti.close()
-            #self.probabilistic_cluster_identification()
-        return
-    
-    def sma_bgspace(self):
-        """
-        Simple minded algorithm in B.G space
-        """
-        def range_comp(x, y, pcnt=0.9):
-            _cx = False
-            insc = set(x).intersection(y)
-            if len(x) < len(y) and len(insc) >= len(x)*pcnt: _cx = True
-            if len(x) > len(y) and len(insc) >= len(y)*pcnt: _cx = True
-            return _cx
-        
-        def find_adjucent(lst, mxx):
-            mxl = []
-            for l in lst:
-                if l["peak"] >= mxx["lb"] and l["peak"] <= mxx["ub"]: mxl.append(l)
-                elif mxx["peak"] >= l["lb"] and mxx["peak"] <= l["ub"]: mxl.append(l)
-                elif range_comp(range(l["lb"], l["ub"]+1), range(mxx["lb"], mxx["ub"]+1)): mxl.append(l)
-            return mxl
-        
-        def nested_cluster_find(ti, mx, j, case=-1):
-            if ti < self.ltime and ti > self.utime: return
-            else:
-                if (case == -1 and ti >= self.ltime) or (case == 1 and ti <= self.utime):
-                    mxl = find_adjucent(self.boundaries[ti], mx)
-                    for m in mxl:
-                        if m in self.gc:
-                            del self.gc[self.gc.index(m)]
-                            self.clusters[j].append(m)
-                            nested_cluster_find(m["time_index"] + case, m, j, case)
-                            nested_cluster_find(m["time_index"] + (-1*case), m, j, (-1*case))
-                return
-        self.clusters = {}
-        j = 0
-        while len(self.gc) > 0:
-            self.clusters[j] = []
-            mx = max(self.gc, key=lambda x:x["value"])
-            self.clusters[j].append(mx)
-            if mx in self.gc: del self.gc[self.gc.index(mx)]
-            nested_cluster_find(mx["time_index"] - 1, mx, j, case=-1)
-            nested_cluster_find(mx["time_index"] + 1, mx, j, case=1)
-            j += 1
-        
-        for c in self.clusters.keys():
-            clust = self.clusters[c]
-            for cl in clust:
-                self.df["labels"] = np.where((self.df.slist<=cl["ub"]) & (self.df.slist>=cl["lb"]) & 
-                                             (self.df.time_index==cl["time_index"]) & (self.df.gate_labels==cl["gc"])
-                                             , c, self.df["labels"])
-        return
-    
-    def probabilistic_cluster_identification(self):
-        """ Idenitify the cluster based on Idenitification """
-        self.df["cluster_id"] = [np.nan] * len(self.df)
-        prob_dctor = ScatterTypeDetection()
-        prob_dctor.copy(self.df)
-        du, prob_clusters = prob_dctor.run(thresh=[self.lth, self.uth], pth=self.pth)
-        for c in np.unique(self.df["labels"]):
-            if c >= 0:
-                print(prob_clusters, self.gflg_type, c, np.unique(self.df["labels"]))
-                auc = prob_clusters[self.gflg_type][c]["auc"]
-                if prob_clusters[self.gflg_type][c]["type"] == "IS": auc = 1-auc
-                if prob_clusters[self.gflg_type][c]["type"] == "US": self.clust_idf[c] = "us"
-                else: self.clust_idf[c] = "%.1f"%(auc*100) + "%" + prob_clusters[self.gflg_type][c]["type"].lower()
         return
     
 class ScatterTypeDetection(object):

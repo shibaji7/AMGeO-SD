@@ -45,7 +45,7 @@ class Beam(object):
         return
 
     def set(self, time, d, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang"],
-            v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"]):
+            v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"], k=None):
         """
         Set all parameters
         time: datetime of beam
@@ -53,15 +53,15 @@ class Beam(object):
         s_param: other scalar params
         v_params: other list params
         """
-        self.time = time
         for p in s_params:
             if p in d.keys():
                 if p == "scan" and d[p] != 0: setattr(self, p, 1)
-                else: setattr(self, p, d[p])
+                else: setattr(self, p, d[p]) if k is None else setattr(self, p, d[p][k])
             else: setattr(self, p, None)
         for p in v_params:
             if p in d.keys(): setattr(self, p, d[p])
             else: setattr(self, p, [])
+        self.time = time
         return
     
     def set_nc(self, time, d, i, s_params, v_params):
@@ -72,7 +72,6 @@ class Beam(object):
         s_param: other scalar params
         v_params: other list params
         """
-        self.time = time
         for p in s_params:
             if p in d.keys(): setattr(self, p, d[p][i])
             else: setattr(self, p, None)
@@ -82,6 +81,7 @@ class Beam(object):
                 if "slist" not in v_params and p=="v": setattr(self, "slist", np.argwhere(~np.isnan(getattr(self, "v"))))
                 setattr(self, p, getattr(self, p)[~np.isnan(getattr(self, p))])
             else: setattr(self, p, [])
+        self.time = time
         return
     
     def copy(self, bm):
@@ -242,7 +242,7 @@ class FetchData(object):
         return pd.DataFrame.from_records(_o)
     
     def scans_to_pandas(self, scans, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time"],
-            v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"]):
+            v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"], start_scnum=0):
         """
         Convert the scan data into dataframe
         """
@@ -254,7 +254,7 @@ class FetchData(object):
                     _o[p].extend(getattr(b, p))
                 for p in s_params:
                     _o[p].extend([getattr(b, p)]*l)
-                _o["scnum"].extend([idn]*l)
+                _o["scnum"].extend([idn + start_scnum]*l)
             L = len(_o["slist"])
             for p in s_params+v_params:
                 if len(_o[p]) < L:

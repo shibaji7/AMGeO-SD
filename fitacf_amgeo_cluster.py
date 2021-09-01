@@ -26,7 +26,7 @@ import json
 import utils
 from fit_records import fetch_print_fit_rec
 from get_fit_data import FetchData
-from clustering_algo import BeamGateFilter, TimeGateFilter, BeamGateTimeFilter
+from clustering_algo import BeamGateTimeFilter
 
 def run_fitacf_amgeo_clustering(rad, start, end, gflg_cast, _dict_):
     """
@@ -64,26 +64,20 @@ def run_fitacf_amgeo_clustering(rad, start, end, gflg_cast, _dict_):
     if gflg_cast not in gflg_cast_types: 
         logger.error(f"gflg_cast has to be in {gflg_cast_types}")
         raise Exception(f"gflg_cast has to be in {gflg_cast_types}")
-    if _dict_["kind"] == "bgc":
-        bgtf = BeamGateTimeFilter(rad, _dict_)
-        scan_info = bgtf.run_bgc_algo().run_time_track_algo()
-        #bgtf.save_data()
-    elif _dict_["kind"] == "tgc":
-        scan_info = fetch_print_fit_rec(rad, start, start + dt.timedelta(minutes=5), file_type=_dict_["ftype"])
-        io = FetchData( rad, [start, end], ftype=_dict_["ftype"], verbose=_dict_["verbose"])
-        _, scans = io.fetch_data(by="scan", scan_prop=scan_info)
-        df = io.scans_to_pandas(scans)
-        tgc = TimeGateFilter(df, beams=np.unique(df.bmnum), eps=_dict_["eps"], min_samples=_dict_["min_samples"], _dict_=_dict_)
-        tgc.run_codes()
-    return {}, scan_info
+    
+    bgtf = BeamGateTimeFilter(rad, _dict_)
+    scan_info = bgtf.run_bgc_algo().run_time_track_algo()
+    bgtf.save_data()
+    o = bgtf.out
+    return o, scan_info
 
 # Script run can also be done via main program
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--rad", default="bks", help="SuperDARN radar code (default bks)")
-    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,17), help="Start date (default 2015-03-17T03)", 
+    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,16,16), help="Start date (default 2015-03-17T03)", 
             type=prs.parse)
-    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,17,12), help="End date (default 2015-03-17T03:30)", 
+    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,17), help="End date (default 2015-03-17T03:30)", 
             type=prs.parse)
     parser.add_argument("-du", "--dur", default=30, help="Duration of the time window in min (30 mins)")
     parser.add_argument("-f", "--dofilter", action="store_false", help="Do filtering (default True)")
@@ -98,7 +92,6 @@ if __name__ == "__main__":
     parser.add_argument("-uth", "--uth", type=float, default=2./3., help="Probability cut-off for GS")
     parser.add_argument("-sid", "--sim_id", default="L100", help="Simulation ID, need to store data into this folder (default L100)")
     parser.add_argument("-ftype", "--ftype", default="fitacf", help="FitACF file type (futacf, fitacf3)")
-    parser.add_argument("-k", "--kind", default="bgc", help="Clustering type bgc/tgc")
     parser.add_argument("-eps", "--eps", default=2, type=int, help="Epsilon for DBSCAN")
     parser.add_argument("-ms", "--min_samples", default=10, type=int, help="Min Samples for DBSCAN")
     parser.add_argument("-tw", "--tw", default=15, help="Duration of the time window for Time-Gate clustering in min (30 mins)")
@@ -117,6 +110,7 @@ if __name__ == "__main__":
     _dic_["out_dir"] = out_dir
     _dic_.update(scan_info)
     _dic_.update(_o)
+    _dic_["gflg_type"] = -1
     _dic_["__func__"] = "fitacf_amgeo_cluster"
     utils.save_cmd(sys.argv, _dic_, out_dir)
     pass

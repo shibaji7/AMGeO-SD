@@ -19,6 +19,7 @@ import json
 import copy
 import numpy as np
 from netCDF4 import Dataset, num2date
+import pandas as pd
 
 import utils
 import plotlib
@@ -29,18 +30,18 @@ def date_hook(_dict_):
     for (key, value) in _dict_.items():
         try:
             _dict_[key] = dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
-        except:
-            pass
+        except: pass
     return _dict_
 
 class PlotProcessedData(object):
     """Class to fetch processed oata and create movies"""
     
-    def __init__(self, param_file, rad=None, date_range=None, sim_id=None, scan_prop=None, verbose=True):
+    def __init__(self, param_file, rad=None, date_range=None, sim_id=None, scan_prop=None, cid=None, verbose=True):
         """
         initialize all variables
         """
         self.verbose = verbose
+        self.cid = cid
         if self.check(param_file, rad, date_range, sim_id, scan_prop):
             logger.error("Either 'param_file' is not None otherwise (rad, date_range, sim_id, scan_prop) not None")
             raise Exception("Either 'param_file' is not None otherwise (rad, date_range, sim_id, scan_prop) not None")
@@ -52,6 +53,8 @@ class PlotProcessedData(object):
             self.scan_prop = {"rad": loaded_dict["rad"], "s_time": loaded_dict["s_time"], 
                               "t_beam": loaded_dict["t_beam"], "s_mode": loaded_dict["s_mode"]}
             self.loaded_dict = loaded_dict
+            for p in loaded_dict.keys():
+                setattr(self, p, loaded_dict[p])
         else:
             self.rad = rad
             self.date_range = date_range
@@ -59,8 +62,12 @@ class PlotProcessedData(object):
             self.sim_id = sim_id
         self.out = {"inv_plots": {"1plot": [], "4plot": [], "5plot": []}, "movies": []}
         self._create_dates()
-        self._fetch_data()
-        self._to_scans()
+        if ("clustered" in self.loaded_dict.keys()) and self.loaded_dict["clustered"]:
+            self._fetch_h5()
+            self.frame2scan()
+        else:
+            self._fetch_data()
+            self._to_scans()
         self._invst_plots()
         self._make_movie()
         return
@@ -103,6 +110,24 @@ class PlotProcessedData(object):
             os.system("gzip -d " + gf)
             self.datastore.append(Dataset(gf.replace(".gz","")))
             os.system("gzip " + gf.replace(".gz",""))
+        return
+    
+    def _fetch_h5(self):
+        """
+        Fetch the data inside the folder
+        """
+        self.datastore = {"d":{}, "f":{}}
+        if hasattr(self, "loaded_dict") and ("out_files" in self.loaded_dict.keys()) and\
+            ("h5_file" in self.loaded_dict["out_files"].keys()) and\
+            ("files" in self.loaded_dict["out_files"]["h5_file"].keys()) and\
+            (len(self.loaded_dict["out_files"]["h5_file"]["files"]) > 0): 
+            files = self.loaded_dict["out_files"]["h5_file"]["files"]
+            for f in files:
+                cluster = int(f.split("_")[-1].replace(".h5", "")[1:])
+                if self.verbose: logger.info(f"Fetching data from HDF {cluster} file - {f}")
+                
+                self.datastore[f.split("_")[-1][0]][cluster] = pd.read_hdf(f, "df", parse_dates=["time"])
+        else: logger.error(f"No HDF5 (.h5) files to plot.")
         return
 
     def _ext_params(self, params):
@@ -173,6 +198,46 @@ class PlotProcessedData(object):
             gscans.append(_s)
         self.scans, self.fscans = gscans[0], gscans[1]
         return
+    
+    def frame2scan(self):
+        """
+        Convert to scans and filter scan from h5 files
+        """
+        if self.cid is None: self.cid = 0 
+        fD, D = self.datastore["f"][self.cid], self.datastore["d"][self.cid]
+        fg, g = fD.groupby(["scnum"]), D.groupby(["scnum"])
+        if self.verbose: logger.info("Converting datasets to scans")
+        s_params = ["time", "bmnum","noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us", "mppul"]
+        self.scans = []
+        v_params = ["v", "w_l", "gflg", "p_l", "slist", "v_e"]
+        mapper = {v_params[i]: v_params[i].replace("fitacf_", "") for i in range(len(v_params))}
+        for _, o in g:
+            _b, ox = [], o.groupby(["bmnum"])
+            for _, x in ox:
+                m = x[s_params+v_params]
+                d = m.rename(columns=mapper).to_dict("list")
+                bm = Beam()
+                bm.set(d["time"][0], d, s_params, v_params, 0)
+                _b.append(bm)
+            sc = Scan(None, None, self.scan_prop["s_mode"])
+            sc.beams = _b
+            sc.update_time()
+            self.scans.append(sc)
+        v_params = ["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde", "v_mad"]
+        self.fscans = []
+        for _, o in fg:
+            _b, ox = [], o.groupby(["bmnum"])
+            for _, x in ox:
+                m = x[s_params+v_params]
+                d = m.to_dict("list")
+                bm = Beam()
+                bm.set(d["time"][0], d, s_params, v_params, 0)
+                _b.append(bm)
+            sc = Scan(None, None, self.scan_prop["s_mode"])
+            sc.beams = _b
+            sc.update_time()
+            self.fscans.append(sc)
+        return
 
     def _invst_plots(self):
         """
@@ -185,13 +250,13 @@ class PlotProcessedData(object):
         xlim = [int(utils.get_config("X_Low", "figures.invst_plots")), int(utils.get_config("X_Upp", "figures.invst_plots"))]
         ylim = [int(utils.get_config("Y_Low", "figures.invst_plots")), int(utils.get_config("Y_Upp", "figures.invst_plots"))]
         folder = utils.build_base_folder_structure(self.rad, self.sim_id) + "inv_plots/"
-        for i, e in enumerate(self.dates):
+        for i, e in enumerate(self.dates[:-1]):
             scans = self.scans[i:i+3]
             scans.append(self.fscans[i])
             ip = IP("1plot", e, self.rad, self.sim_id, scans, 
                     {"thresh": self.loaded_dict["thresh"], "gs": self.loaded_dict["gflg_cast"], 
                      "pth": self.loaded_dict["pth"], "pbnd": [self.loaded_dict["lth"], self.loaded_dict["uth"]],
-                     "gflg_type": self.gflg_type}, xlim=xlim, ylim=ylim, folder=folder)
+                     "gflg_type": self.gflg_type, "cid":self.cid}, xlim=xlim, ylim=ylim, folder=folder)
             self.out["inv_plots"]["1plot"].append(ip.draw())
             self.out["inv_plots"]["4plot"].append(ip.draw("4plot"))
             self.out["inv_plots"]["5plot"].append(ip.draw("5plot"))

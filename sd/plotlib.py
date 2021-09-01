@@ -231,7 +231,8 @@ class InvestigativePlots(MasterPlotter):
             C = 20
             dur = int((self.data[1].stime.replace(microsecond=0)-self.data[0].stime.replace(microsecond=0)).seconds/60.)
             fig, ax = plt.subplots(figsize=(6, 4), sharex="all", sharey="all", nrows=1, ncols=1, dpi=100)
-            mx = self.draw_scatter(ax, self.data[1], label={"xx":0.75, "yy":1.03, "text":r"$power^{LoS}[dB]$"}, zparam="p_l", c=C, cast=cast)
+            mx = self.draw_scatter(ax, self.data[1], label={"xx":0.75, "yy":1.03, "text":r"$power^{LoS}[dB]$"}, 
+                                   zparam="p_l", c=C, cast=cast)
             self.set_size_legend(ax, mx, leg_keys=("30", "15", "5"), leg=self.set_point_legend(ax), c=C)
             fig.text(0.5, 0.01, "Beams", ha="center",fontdict={"color":"blue"})
             fig.text(0.06, 0.5, "Gates", va="center", rotation="vertical",fontdict={"color":"blue"})
@@ -239,6 +240,8 @@ class InvestigativePlots(MasterPlotter):
                                         y=0.98, fontdict={"color":"darkblue"})
             ax.text(0.2, 1.03, "GS Flag=%s"%(gs_map[self.gflg_type]), fontdict={"color":"blue","size":7}, 
                     ha="center", va="center", transform=ax.transAxes)
+            if self.cid is not None: ax.text(0.1, 0.1, "C:%02d"%self.cid, ha="center", va="center", 
+                                             transform=ax.transAxes, fontdict={"color":"blue","size":7})
             X,Y,u = utils.get_gridded_parameters(utils.parse_parameter(self.data[1], p="v"),zparam="v")
             v = np.zeros_like(u)
             q = ax.quiver(X, Y, u.T, v.T)
@@ -269,6 +272,9 @@ class InvestigativePlots(MasterPlotter):
             mx = self.draw_scatter(axes[1,1], self.data[1], label={"xx":0.75, "yy":1.05, "text":r"$width^{LoS}[m/s]$"}, 
                     zparam="w_l", c=C, cast=cast)
             self.set_size_legend(axes[1,1], mx, leg_keys=("200", "100", "10"), leg=self.set_point_legend(axes[1,1]), c=C)
+            ax = axes[1,1]
+            if self.cid is not None: ax.text(0.1, 0.1, "C:%02d"%self.cid, ha="center", va="center", 
+                                             transform=ax.transAxes, fontdict={"color":"blue","size":7})
             fname = "{folder}{date}.4plot.png".format(folder=self.folder, rad=self.rad, date=self.e.strftime("%Y%m%d%H%M"))
             fig.savefig(fname, bbox_inches="tight")
         elif self.figure_name == "5plot":
@@ -320,6 +326,8 @@ class InvestigativePlots(MasterPlotter):
                 fonttext["color"] = "blue"
             self.set_size_legend(ax, mx, leg_keys=("150", "75", "25"), leg=self.set_point_legend(ax, is_unknown=True), c=20)
             ax.set_yticklabels([])
+            if self.cid is not None: ax.text(0.1, 0.1, "C:%02d"%self.cid, ha="center", va="center", 
+                                             transform=ax.transAxes, fontdict={"color":"blue","size":7})
             fname = "{folder}{date}.5plot.png".format(folder=self.folder, rad=self.rad, date=self.e.strftime("%Y%m%d%H%M"))
             fig.savefig(fname, bbox_inches="tight")
         return fname
