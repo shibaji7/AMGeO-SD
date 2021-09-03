@@ -18,7 +18,9 @@ from scipy import signal
 from scipy.stats import beta
 from loguru import logger
 
-from get_fit_data import Gate, Beam, Scan
+from sklearn.cluster import DBSCAN
+
+from get_fit_data import Gate, Beam, Scan, FetchData
 import utils
 
 
@@ -83,7 +85,7 @@ class Filter(object):
         return oscan
 
 
-    def doFilter(self, i_scans, comb=False, gflg_type=-1):
+    def doFilter(self, i_scans, comb=False, gflg_type=-1, do_cluster=True):
         """
         Median filter based on the weight given by matrix (3X3X3) w, and threshold based on thresh
     
@@ -98,7 +100,7 @@ class Filter(object):
             for s in i_scans:
                 scans.append(self._discard_repeting_beams(s))
         else: scans = i_scans
-
+        
         self.scans = scans
         w, pbnd, pth, kde_plot_point = self.w, self.pbnd, self.pth, self.kde_plot_point
         oscan = Scan(scans[1].stime, scans[1].etime, scans[1].s_mode)
@@ -178,9 +180,34 @@ class Filter(object):
                     gflg = self.get_kde_gflg(gfx, pbnd, pth)
                     beam.gflg_kde.append(gflg)
             oscan.beams.append(beam)
-    
+        
+        ###
+        # Do clusteing analysis scan by scan after the filtering
+        ###
+        if do_cluster: oscan = self.run_scan_cluster(oscan)
+        else: oscan.beams = [setattr(b, "clabel", [-999]*len(b.slist)) for b in oscan.beams]
         oscan.update_time()
         sorted(oscan.beams, key=lambda bm: bm.bmnum)
+        return oscan
+    
+    def run_scan_cluster(self, oscan, eps=2, min_samples=5):
+        logger.info(f"Running DBSCAN clustering analysis....")
+        s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time", "intt.sc", "intt.us", "mppul"]
+        v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e", "v_mad", "gflg_kde", "gflg_conv"]
+        io = FetchData(None, None)
+        o = io.scans_to_pandas([oscan], s_params, v_params)
+        ds = DBSCAN(eps=eps, min_samples=min_samples).fit(o[["bmnum", "slist"]].values)
+        o["labels"] = ds.labels_
+        _b, ox = [], o.groupby(["bmnum"])
+        for _, x in ox:
+            m = x[s_params+v_params+["labels"]]
+            d = m.to_dict("list")
+            bm = Beam()
+            bm.set(d["time"][0], d, s_params, v_params, 0)
+            setattr(bm, "clabel", d["labels"])
+            _b.append(bm)
+        oscan = Scan(None, None, "med_filtered")
+        oscan.beams = _b
         return oscan
     
     def get_conv_gflg(self, gfx, tot, pbnd):

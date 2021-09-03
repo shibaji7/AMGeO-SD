@@ -61,8 +61,8 @@ class PlotProcessedData(object):
             self.scan_prop = scan_prop
             self.sim_id = sim_id
         self.out = {"inv_plots": {"1plot": [], "4plot": [], "5plot": []}, "movies": []}
-        self._create_dates()
         if ("clustered" in self.loaded_dict.keys()) and self.loaded_dict["clustered"]:
+            self._create_dates()
             self._fetch_h5()
             self.frame2scan()
         else:
@@ -203,6 +203,7 @@ class PlotProcessedData(object):
         """
         Convert to scans and filter scan from h5 files
         """
+        self.dates = []
         if self.cid is None: self.cid = 0 
         fD, D = self.datastore["f"][self.cid], self.datastore["d"][self.cid]
         fg, g = fD.groupby(["scnum"]), D.groupby(["scnum"])
@@ -225,7 +226,7 @@ class PlotProcessedData(object):
             self.scans.append(sc)
         v_params = ["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde", "v_mad"]
         self.fscans = []
-        for _, o in fg:
+        for n, o in fg:
             _b, ox = [], o.groupby(["bmnum"])
             for _, x in ox:
                 m = x[s_params+v_params]
@@ -237,6 +238,8 @@ class PlotProcessedData(object):
             sc.beams = _b
             sc.update_time()
             self.fscans.append(sc)
+            self.dates.append(sc.stime)
+        logger.info(f"Total lengths - {len(self.fscans)}")
         return
 
     def _invst_plots(self):
@@ -250,9 +253,15 @@ class PlotProcessedData(object):
         xlim = [int(utils.get_config("X_Low", "figures.invst_plots")), int(utils.get_config("X_Upp", "figures.invst_plots"))]
         ylim = [int(utils.get_config("Y_Low", "figures.invst_plots")), int(utils.get_config("Y_Upp", "figures.invst_plots"))]
         folder = utils.build_base_folder_structure(self.rad, self.sim_id) + "inv_plots/"
-        for i, e in enumerate(self.dates[:-1]):
-            scans = self.scans[i:i+3]
-            scans.append(self.fscans[i])
+        logger.info(f"Lengths L(dates,scans,fscans)-({len(self.dates)}, {len(self.scans)}, {len(self.fscans)})")
+        logger.info(f"Lengths Start,end-({self.dates[0]}, {self.dates[-1]})")
+        logger.info(f"Lengths Start,end~(scans)-({self.scans[0].stime}, {self.scans[-1].etime})")
+        logger.info(f"Lengths Start,end~(fscans)-({self.fscans[0].stime}, {self.fscans[-1].etime})")
+        #for i, e in enumerate(self.dates[:-1]):
+        for i in range(1,len(self.scans)-2):
+            e = self.fscans[i-1].stime
+            scans = self.scans[i-1:i+2]
+            scans.append(self.fscans[i-1])
             ip = IP("1plot", e, self.rad, self.sim_id, scans, 
                     {"thresh": self.loaded_dict["thresh"], "gs": self.loaded_dict["gflg_cast"], 
                      "pth": self.loaded_dict["pth"], "pbnd": [self.loaded_dict["lth"], self.loaded_dict["uth"]],

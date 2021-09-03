@@ -52,7 +52,7 @@ def run_fitacf_amgeo_plotting(param_file, rad, start, end, sim_id, cid, verbose)
 # Script run can also be done via main program
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--param_file", default="data/outputs/L100/bks/params.json", 
+    parser.add_argument("-p", "--param_file", default="data/outputs/L101/bks/params.json", 
                         help="Output parameter file from the fitacf++ run")
     parser.add_argument("-r", "--rad", default=None, help="SuperDARN radar code")
     parser.add_argument("-s", "--start", default=None, help="Start date (e.g. 2015-03-17T03)", type=prs.parse)

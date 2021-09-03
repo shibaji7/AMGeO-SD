@@ -22,6 +22,7 @@ from loguru import logger
 import utils
 from get_fit_data import FetchData
 from boxcar_filter import Filter
+from scan_cluster_plots import ClusterScanMap
 
 import multiprocessing as mp
 from functools import partial
@@ -208,6 +209,20 @@ class Simulate(object):
             if np.mod(j,10)==0: logger.info(f"Running median filter for scan at - {self.dates[j]}")
             self.fscans.append(s)
             j += 1
+            
+        xlim = [int(utils.get_config("X_Low", "figures.invst_plots")), int(utils.get_config("X_Upp", "figures.invst_plots"))]
+        ylim = [int(utils.get_config("Y_Low", "figures.invst_plots")), int(utils.get_config("Y_Upp", "figures.invst_plots"))]
+        for f in self.fscans:
+            cm = ClusterScanMap(f, f.stime, self.rad, sim_id=self.sim_id, 
+                                keywords={"thresh": self.thresh, 
+                                          "gs": "gflg_conv", 
+                                          "pth": self.pth, 
+                                          "pbnd": [self.lth, self.uth], 
+                                          "zparam":"p_l",
+                                          "gflg_type":self.gflg_type}, 
+                                xlim=xlim, ylim=ylim)
+            cm._plot_med_filt()
+            
         if self.verbose: logger.info(f"Total number of scans invoked by median filter {j}")
         return
 

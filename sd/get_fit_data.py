@@ -126,8 +126,8 @@ class Scan(object):
         Update stime and etime of the scan.
         up: Update average parameters if True
         """
-        self.stime = self.beams[0].time
-        self.etime = self.beams[-1].time
+        self.stime = min([b.time for b in self.beams])
+        self.etime = max([b.time for b in self.beams])
         self._populate_avg_params()
         return
 

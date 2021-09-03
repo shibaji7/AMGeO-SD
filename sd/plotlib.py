@@ -191,6 +191,7 @@ class MasterPlotter(object):
         X,Y,u = utils.get_gridded_parameters(utils.parse_parameter(scan, p=zparam), zparam=zparam)
         self.draw_specific_points(ax, scan, u, cast=cast, keys=keys, c=c)
         return np.max(np.abs(u))
+    
 
 
 class InvestigativePlots(MasterPlotter):
@@ -230,7 +231,7 @@ class InvestigativePlots(MasterPlotter):
         if self.figure_name == "1plot":
             C = 20
             dur = int((self.data[1].stime.replace(microsecond=0)-self.data[0].stime.replace(microsecond=0)).seconds/60.)
-            fig, ax = plt.subplots(figsize=(6, 4), sharex="all", sharey="all", nrows=1, ncols=1, dpi=100)
+            fig, ax = plt.subplots(figsize=(6, 4), sharex="all", sharey="all", nrows=1, ncols=1, dpi=150)
             mx = self.draw_scatter(ax, self.data[1], label={"xx":0.75, "yy":1.03, "text":r"$power^{LoS}[dB]$"}, 
                                    zparam="p_l", c=C, cast=cast)
             self.set_size_legend(ax, mx, leg_keys=("30", "15", "5"), leg=self.set_point_legend(ax), c=C)
@@ -251,7 +252,7 @@ class InvestigativePlots(MasterPlotter):
             fig.savefig(fname, bbox_inches="tight")
         elif self.figure_name == "4plot":
             dur = int((self.data[1].stime.replace(microsecond=0)-self.data[0].stime.replace(microsecond=0)).seconds/60.)
-            fig, axes = plt.subplots(figsize=(6, 6), sharex="all", sharey="all", nrows=2, ncols=2, dpi=100)
+            fig, axes = plt.subplots(figsize=(6, 6), sharex="all", sharey="all", nrows=2, ncols=2, dpi=150)
             fig.subplots_adjust(wspace=0.1,hspace=0.1)
             fig.text(0.5, 0.06, "Beams", ha="center",fontdict={"color":"blue"})
             fig.text(0.06, 0.5, "Gates", va="center", rotation="vertical",fontdict={"color":"blue"})
@@ -368,7 +369,7 @@ class MovieMaker(MasterPlotter):
         """
         fonttext["size"] = 10
         C = 10
-        fig = plt.figure(figsize=(3,3),dpi=100)
+        fig = plt.figure(figsize=(3,3),dpi=150)
         ax = fig.add_subplot(111)
         mx = self.draw_scatter(ax, self.scan, label={"xx":0.5, "yy":0.9, "text":"%s UT"%self.e.strftime("%H:%M")}, zparam="p_l", c=C)
         fonttext["size"] = 6
@@ -395,7 +396,7 @@ class MovieMaker(MasterPlotter):
         """
         C = 10
         fonttext["size"] = 6
-        fig = plt.figure(figsize=(3,3),dpi=100)
+        fig = plt.figure(figsize=(3,3),dpi=150)
         ax = fig.add_subplot(111)
         mx = self.draw_scatter(ax, self.scan, label={"xx":0.8, "yy":1.02, "text":""}, zparam=self.zparam, cast=self.gs, c=C)
         self.set_size_legend(ax, mx, leg_keys=("30", "15", "5"), leg=self.set_point_legend(ax, is_unknown=True), c=C)
@@ -529,9 +530,9 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
     fig.savefig(fname, bbox_inches="tight")
     plt.close()
     fig, axes = plt.subplots(figsize=(21,12), nrows=4, ncols=len(gate_lims.keys()), sharey=True, dpi=150)
-    fonttext["size"] = 5
+    fonttext["size"], L = 5, len(gate_lims.keys())
     for i, k in enumerate(gate_lims.keys()):
-        ax = axes[0, i]
+        ax = axes[0, i] if L > 1 else axes[0]
         dx = df[(df.slist>=gate_lims[k][0]) & (df.slist<=gate_lims[k][1])]
         bins = list(range(-100,100,1))
         ax.hist(dx.v, bins=bins, histtype="step", density=False)
@@ -541,7 +542,7 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
         stat = "\n" + r"$\mu,\hat{v},CI(90)$=%.1f,%.1f,%.1f"%(np.mean(dx.v), np.median(dx.v),np.nanquantile(np.abs(dx.v), 0.9))
         ax.text(0.6, 0.7, str(k) + stat, horizontalalignment="center", verticalalignment="center",
                 transform=ax.transAxes, fontdict=fonttext)
-        ax = axes[1, i]
+        ax = axes[1, i] if L > 1 else axes[1]
         dx = df[(df.slist>=gate_lims[k][0]) & (df.slist<=gate_lims[k][1])]
         bins = list(range(-1000,1000,1))
         ax.hist(dx.v, bins=bins, histtype="step", density=False)
@@ -551,7 +552,7 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
         stat = "\n" + r"$\mu,\hat{v},CI(90)$=%.1f,%.1f,%.1f"%(np.mean(dx.v), np.median(dx.v),np.nanquantile(np.abs(dx.v), 0.9))
         ax.text(0.6, 0.7, str(k) + stat, horizontalalignment="center", verticalalignment="center",
                 transform=ax.transAxes, fontdict=fonttext)
-        ax = axes[2, i]
+        ax = axes[2, i] if L > 1 else axes[2]
         ax.hist(dx.w_l, bins=range(0,100,1), histtype="step", density=False)
         if i==0: ax.set_ylabel("Density", fontdict=font)
         if i==len(gate_lims.keys())-1: ax.text(1.05, 0.5, "Width (m/s)", horizontalalignment="center", verticalalignment="center",
@@ -559,7 +560,7 @@ def to_midlatitude_gate_summary(rad, df, gate_lims, names, smooth, fname, sb):
         stat = "\n" + r"$\mu,\hat{w},CI(90)$=%.1f,%.1f,%.1f"%(np.mean(dx.w_l), np.median(dx.w_l), np.nanquantile(np.abs(dx.w_l), 0.9))
         ax.text(0.6, 0.7, str(k) + stat, horizontalalignment="center", verticalalignment="center",
                 transform=ax.transAxes, fontdict=fonttext)
-        ax = axes[3, i]
+        ax = axes[3, i] if L > 1 else axes[3]
         ax.scatter(dx.v, np.abs(dx.w_l), s=2)
         ax.set_xlim(-100,100)
         ax.set_ylim(0,100)

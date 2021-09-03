@@ -27,6 +27,7 @@ import json
 import cv2
 from scipy.optimize import curve_fit
 import traceback
+import copy
 
 from sklearn.cluster import DBSCAN
 
@@ -119,6 +120,7 @@ class BeamGateTimeFilter(object):
         self.scan_map = {}
         if self._dict_["start"] and not os.path.exists(self.beam_gate_clusters_file):
             rec_list = []
+            _dict_ = copy.copy(self._dict_)
             start, end_date = self._dict_["start"], self._dict_["end"]
             dn, dur = start, self._dict_["dur"]
             ti = 0
@@ -127,7 +129,8 @@ class BeamGateTimeFilter(object):
             while dn < end_date:
                 self.scan_info = fetch_print_fit_rec(self.rad, dn, dn + dt.timedelta(minutes=5), file_type=self._dict_["ftype"])
                 start = dn - dt.timedelta(minutes=self.scan_info["s_time"])
-                end = dn + dt.timedelta(minutes=dur) + dt.timedelta(minutes=2*self.scan_info["s_time"])
+                end = min(dn + dt.timedelta(minutes=dur) + dt.timedelta(minutes=2*self.scan_info["s_time"]),
+                          end_date + dt.timedelta(minutes=2*self.scan_info["s_time"]))
                 io = FetchData( self.rad, [start, end], ftype=self._dict_["ftype"], verbose=self._dict_["verbose"])
                 _, scans = io.fetch_data(by="scan", scan_prop=self.scan_info)
                 nscans, fscans = [], []
@@ -139,8 +142,8 @@ class BeamGateTimeFilter(object):
                 fD = io.scans_to_pandas(fscans, s_params, fv_params, start_scnum)
                 D = io.scans_to_pandas(scans, s_params, v_params, start_scnum)
                 self.scan_map[dn] = (fD, D)
-                self._dict_["start"], self._dict_["end"] = dn, dn + dt.timedelta(minutes=dur)
-                bgc = BeamGateFilter(self.rad, scans, ti, eps=self.eps, min_samples=self.min_samples, _dict_=self._dict_)
+                _dict_["start"], _dict_["end"] = dn, dn + dt.timedelta(minutes=dur)
+                bgc = BeamGateFilter(self.rad, scans, ti, eps=self.eps, min_samples=self.min_samples, _dict_=_dict_)
                 bgc.doFilter(io, themis=self.scan_info["t_beam"])
                 dn = dn + dt.timedelta(minutes=dur)
                 ti += 1
@@ -177,6 +180,7 @@ class BeamGateTimeFilter(object):
             bucket.remove(bucket[0])
             for ti in range(ti_ini, ti_max):
                 udf = self.recdf[self.recdf.time_intv==ti]
+                is_break = True
                 for _, ux in udf.iterrows():
                     now_box_range = ux["beam_low"], ux["beam_high"], ux["gate_low"], ux["gate_high"]
                     now_box_point = ux["mean_beam"], ux["mean_gate"]
@@ -187,7 +191,9 @@ class BeamGateTimeFilter(object):
                             clusters[i].append(d)
                             box_range, box_point = now_box_range, now_box_point
                             bucket.remove(d)
-                    else: break
+                            is_break = False
+                            break
+                if is_break: break
             i += 1
         with open(self.beam_gate_time_tracker_file, "w") as f: f.write(json.dumps(clusters, sort_keys=True, indent=4))
         return self.scan_info

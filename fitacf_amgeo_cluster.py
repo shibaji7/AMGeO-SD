@@ -75,9 +75,9 @@ def run_fitacf_amgeo_clustering(rad, start, end, gflg_cast, _dict_):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--rad", default="bks", help="SuperDARN radar code (default bks)")
-    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,16,16), help="Start date (default 2015-03-17T03)", 
+    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,17), help="Start date (default 2015-03-17T03)", 
             type=prs.parse)
-    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,17), help="End date (default 2015-03-17T03:30)", 
+    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,17,12), help="End date (default 2015-03-17T03:30)", 
             type=prs.parse)
     parser.add_argument("-du", "--dur", default=30, help="Duration of the time window in min (30 mins)")
     parser.add_argument("-f", "--dofilter", action="store_false", help="Do filtering (default True)")
@@ -90,7 +90,7 @@ if __name__ == "__main__":
     parser.add_argument("-pth", "--pth", type=float, default=.5, help="Probability threshold for KDE (default 0.5)")
     parser.add_argument("-lth", "--lth", type=float, default=1./3., help="Probability cut-off for IS")
     parser.add_argument("-uth", "--uth", type=float, default=2./3., help="Probability cut-off for GS")
-    parser.add_argument("-sid", "--sim_id", default="L100", help="Simulation ID, need to store data into this folder (default L100)")
+    parser.add_argument("-sid", "--sim_id", default="L101", help="Simulation ID, need to store data into this folder (default L100)")
     parser.add_argument("-ftype", "--ftype", default="fitacf", help="FitACF file type (futacf, fitacf3)")
     parser.add_argument("-eps", "--eps", default=2, type=int, help="Epsilon for DBSCAN")
     parser.add_argument("-ms", "--min_samples", default=10, type=int, help="Min Samples for DBSCAN")
@@ -111,6 +111,7 @@ if __name__ == "__main__":
     _dic_.update(scan_info)
     _dic_.update(_o)
     _dic_["gflg_type"] = -1
+    _dic_["start"] = args.start
     _dic_["__func__"] = "fitacf_amgeo_cluster"
     utils.save_cmd(sys.argv, _dic_, out_dir)
     pass
