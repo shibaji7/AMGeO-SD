@@ -40,6 +40,9 @@ from plotlib import *
 from matplotlib.dates import date2num
 import multiprocessing as mp
 
+import time
+from netCDF4 import Dataset, date2num
+
 from string import ascii_uppercase
 
 
@@ -88,6 +91,12 @@ class BeamGateTimeFilter(object):
         self.out["out_files"]["nc_file"]["template"] = self.out_dir + "data_{s}_{e}_%s.nc"\
             .format(s=self._dict_["start"].strftime("%Y%m%d.%H%M"),
                     e=self._dict_["end"].strftime("%Y%m%d.%H%M"))
+        
+        start, end = self._dict_["start"], self._dict_["end"]
+        self.out["out_files"]["h5_file_master"] = self.out_dir + "data_{s}_{e}.h5".format(s=start.strftime("%Y%m%d.%H%M"),
+                                                                                          e=end.strftime("%Y%m%d.%H%M"))
+        self.out["out_files"]["nc_file_master"] = self.out_dir + "data_{s}_{e}.nc".format(s=start.strftime("%Y%m%d.%H%M"),
+                                                                                          e=end.strftime("%Y%m%d.%H%M"))
         return
     
     def create_movie(self, fps=1):
@@ -200,7 +209,7 @@ class BeamGateTimeFilter(object):
     
     def save_data(self):
         v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"]
-        if os.path.exists(self.beam_gate_time_tracker_file):
+        if os.path.exists(self.beam_gate_time_tracker_file) and len(self.scan_map.keys()) > 0:
             logger.info(" Save all cluster data.")
             with open(self.beam_gate_time_tracker_file, "r") as f: clusters_obj = json.loads("\n".join(f.readlines()))
             clusters = clusters_obj.keys()
@@ -221,11 +230,102 @@ class BeamGateTimeFilter(object):
                     for p in v_params:
                         fD["fitacf_"+p] = D[p]
                     fDb, Db = pd.concat([fDb, fD]), pd.concat([Db, D])
-                fDb["cluster_tag"], Db["cluster_tag"] = c, c
+                fDb["cluster_tag"], Db["cluster_tag"] = int(c), int(c)
                 fDb.to_hdf(h5fname%("f%02d"%int(c)), key="df")
                 Db.to_hdf(h5fname%("d%02d"%int(c)), key="df")
                 self.out["out_files"]["h5_file"]["files"].append(h5fname%("f%02d"%int(c)))
                 self.out["out_files"]["h5_file"]["files"].append(h5fname%("d%02d"%int(c)))
+        else: logger.error(" File not found - ", self.beam_gate_time_tracker_file)
+        return
+    
+    def repackage_to_netcdf(self):
+        s_params=["bmnum", "intt.sc", "intt.us", "mppul", "noise.sky", "nrang", "scan", "scnum", "tfreq", "time"]
+        v_params=["p_l", "v", "v_mad", "w_l", "fitacf_v", "fitacf_w_l", "fitacf_gflg", "fitacf_p_l", "slist", 
+                    "fitacf_slist", "fitacf_v_e", "cluster_tag", "ribiero_gflg", "gflg", "gflg_conv", "gflg_kde"]
+        if os.path.exists(self.beam_gate_time_tracker_file):
+            h5fname = self.out["out_files"]["h5_file"]["template"]
+            with open(self.beam_gate_time_tracker_file, "r") as f: clusters_obj = json.loads("\n".join(f.readlines()))
+            clusters = clusters_obj.keys()
+            o = pd.DataFrame()
+            for j, c in enumerate(clusters):
+                fname = h5fname%("f%02d"%int(c))
+                o = pd.concat([o, pd.read_hdf(fname, key="df", parse_dates=["time"])])
+            o = o.dropna()
+            o.cluster_tag = np.array(o.cluster_tag).astype(int)
+            o = utils._run_riberio_threshold_on_rad(o)
+            o.gflg_conv, o.gflg_kde = o.ribiero_gflg, o.ribiero_gflg
+            io = FetchData( self.rad, [self._dict_["start"], self._dict_["end"]], ftype=self._dict_["ftype"],
+                           verbose=self._dict_["verbose"])
+            fscans = io.pandas_to_scans(o, self.scan_info["s_mode"], s_params, v_params)
+            
+            ##########################
+            # To HDF5 files
+            ##########################
+            fname = self.out["out_files"]["h5_file_master"]
+            o.to_hdf(fname, key="df")
+            os.system("gzip " + fname)
+            
+            
+            ##########################
+            # To NC files
+            ##########################
+            s_params=["bmnum", "intt.sc", "intt.us", "mppul", "noise.sky", "nrang", "scan", "scnum", "tfreq", "time"]
+            v_params=["p_l", "v", "v_mad", "w_l", "slist", "cluster_tag", "ribiero_gflg", "gflg", "gflg_conv", "gflg_kde"]
+            _du = {key: [] for key in v_params + s_params}
+            blen, glen = 0, 110
+            for fscan in fscans[1:-1]:
+                blen += len(fscan.beams)
+                for b in fscan.beams:
+                    for p in v_params:
+                        _du[p].append(getattr(b, p))
+                    for p in s_params:
+                        _du[p].append(getattr(b, p))
+
+            if self.verbose: logger.info(f"Shape of the filtered beam dataset [beams X gates]- {blen},{glen}")
+            fname = self.out["out_files"]["nc_file_master"]
+            rootgrp = Dataset(fname, "w", format="NETCDF4")
+            rootgrp.description = """
+                                     Fitacf++ : Boxcar filtered data.
+                                     Filter parameter: weight matrix - default; threshold - {th}; GS Flag Type - {gflg_type}
+                                     Parameters (Thresholds) - (thresh:{th}, gflg_type:{gflg_type})
+                                  """.format(th=self.thresh, gflg_type="Ribiero")
+            rootgrp.history = "Created " + time.ctime(time.time())
+            rootgrp.source = "AMGeO - SD data processing"
+            rootgrp.beam_per_scan = len(fscans[0].beams)
+            rootgrp.createDimension("nbeam", blen)
+            rootgrp.createDimension("ngate", glen)
+            beam = rootgrp.createVariable("nbeam","i1",("nbeam",))
+            gate = rootgrp.createVariable("ngate","i1",("ngate",))
+            beam[:], gate[:] = range(blen), range(glen)
+            times = rootgrp.createVariable("time", "f8", ("nbeam",))
+            times.units = "hours since 1970-01-01 00:00:00.0"
+            times.calendar = "julian"
+            times[:] = date2num(_du["time"],units=times.units,calendar=times.calendar)
+            s_params, type_params, desc_params = ["bmnum","noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us", "mppul", "scnum"],\
+                    ["i1","f4","f4","i1","f4","f4","f4","i1","i1"],\
+                    ["Beam numbers", "Sky Noise", "Frequency", "Scan Flag", "Max. Range Gate", "Integration sec", "Integration u.sec",
+                            "Number of pulses", "Scan number"]
+            for _i, k in enumerate(s_params):
+                tmp = rootgrp.createVariable(k, type_params[_i],("nbeam",))
+                tmp.description = desc_params[_i]
+                tmp[:] = np.array(_du[k])
+            v_params, desc_params = ["v", "w_l", "gflg", "p_l", "slist", "gflg_conv", "gflg_kde", "v_mad", "cluster_tag", "ribiero_gflg"],\
+                    ["LoS Velocity (+ve: towards the radar, -ve: away from radar)", "LoS Width",
+                            "GS Flag (%d)"%self.gflg_type, "LoS Power", "Gate", "GS Flag (Conv)", "GS Flag (KDE)",
+                            "MAD of LoS Velociy after filtering", "Cluster ID", "Ribiero Flag"]
+            _g = _du["slist"]
+            for _i, k in enumerate(v_params):
+                tmp = rootgrp.createVariable(k, "f4", ("nbeam", "ngate"))
+                tmp.description = desc_params[_i]
+                _m = np.empty((blen,glen))
+                _m[:], x = np.nan, _du[k]
+                for _j in range(blen):
+                    _m[_j,np.array(_g[_j]).astype(int)] = np.array(x[_j])
+                tmp[:] = _m
+
+            rootgrp.close()
+            os.system("gzip " + fname)
+            ##########################################
         else: logger.error(" File not found - ", self.beam_gate_time_tracker_file)
         return
     
@@ -644,7 +744,7 @@ class ScatterTypeDetection(object):
     def kde_beam(self):
         from scipy.stats import beta
         import warnings
-        warnings.filterwarnings('ignore', 'The iteration is not making good progress')
+        warnings.filterwarnings("ignore", "The iteration is not making good progress")
         vel = np.hstack(self.df["v"])
         wid = np.hstack(self.df["w_l"])
         clust_flg_1d = np.hstack(self.df["cluster_id"])
@@ -683,7 +783,7 @@ class ScatterTypeDetection(object):
     def kde(self):
         from scipy.stats import beta
         import warnings
-        warnings.filterwarnings('ignore', 'The iteration is not making good progress')
+        warnings.filterwarnings("ignore", "The iteration is not making good progress")
         vel = np.hstack(self.df["v"])
         wid = np.hstack(self.df["w_l"])
         clust_flg_1d = np.hstack(self.df["cluster_id"])

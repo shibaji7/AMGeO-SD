@@ -262,6 +262,37 @@ class FetchData(object):
                     _o[p].extend([np.nan]*(L-l))
         return pd.DataFrame.from_records(_o)
     
+    def pandas_to_beams(self, df, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time"],
+            v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"]):
+        """
+        Convert the dataframe to beam
+        """
+        beams = []
+        for bm in np.unique(df.bmnum):
+            o = df[df.bmnum==bm]
+            d = o.to_dict(orient="list")
+            for p in s_params:
+                d[p] = d[p][0]
+            b = Beam()
+            b.set(o.time.tolist()[0], d, s_params,  v_params)
+            beams.append(b)
+        return beams
+    
+    def pandas_to_scans(self, df, smode, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time"],
+            v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"]):
+        """
+        Convert the dataframe to scans
+        """
+        scans = []
+        for sn in np.unique(df.scnum):
+            o = df[df.scnum==sn]
+            beams = self.pandas_to_beams(o, s_params, v_params)
+            sc = Scan(None, None, smode)
+            sc.beams.extend(beams)
+            sc.update_time()
+            scans.append(sc)
+        return scans
+    
     def fetch_data(self, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us",\
             "mppul", "nrang", "rsep", "cp", "frang", "smsep", "lagfr", "channel"],
             v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"],

@@ -20,6 +20,8 @@ import datetime as dt
 from loguru import logger
 import json
 
+from matplotlib.dates import date2num
+
 def smooth(x, window_len=51, window="hanning"):
     if x.ndim != 1: raise ValueError("smooth only accepts 1 dimension arrays.")
     if x.size < window_len: raise ValueError("Input vector needs to be bigger than window size.")
@@ -115,3 +117,59 @@ def get_config(key, section="amgeo"):
     config.read("config/conf.ini")
     val = config[section][key]
     return val
+
+def ribiero_gs_flg(vel, time):
+    L = np.abs(time[-1] - time[0]) * 24
+    high = np.sum(np.abs(vel) > 15.0)
+    low = np.sum(np.abs(vel) <= 15.0)
+    if low == 0: R = 1.0  # TODO hmm... this works right?
+    else: R = high / low  # High vel / low vel ratio
+    # See Figure 4 in Ribiero 2011
+    if L > 14.0:
+        # Addition by us
+        if R > 0.15: return False    # IS
+        else: return True     # GS
+        # Classic Ribiero 2011
+        #return True  # GS
+    elif L > 3:
+        if R > 0.2: return False
+        else: return True
+    elif L > 2:
+        if R > 0.33: return False
+        else: return True
+    elif L > 1:
+        if R > 0.475: return False
+        else: return True
+    # Addition by Burrell 2018 "Solar influences..."
+    else:
+        if R > 0.5: return False
+        else: return True
+    # Classic Ribiero 2011
+    # else:
+    #    return False
+
+def _run_riberio_threshold(u, beam):
+    df = u[u.bmnum==beam]
+    clust_flag = np.array(df.labels); gs_flg = np.zeros_like(clust_flag)
+    vel = np.hstack(np.abs(df.v)); t = np.hstack(df.time)
+    gs_flg = np.zeros_like(clust_flag)
+    for c in np.unique(clust_flag):
+        clust_mask = c == clust_flag
+        if c == -1: gs_flg[clust_mask] = -1
+        else: gs_flg[clust_mask] = ribiero_gs_flg(vel[clust_mask], t[clust_mask])
+    df["ribiero_gflg"] = gs_flg
+    return df
+
+def _run_riberio_threshold_on_rad(u, flag="ribiero_gflg"):
+    df = u.copy()
+    clust_flag = np.array(df.cluster_tag)
+    gs_flg = np.zeros_like(clust_flag)
+    vel = np.hstack(np.abs(df.v))
+    t = np.hstack(df.time.apply(lambda x: date2num(x)))
+    gs_flg = np.zeros_like(clust_flag)
+    for c in np.unique(clust_flag):
+        clust_mask = c == clust_flag
+        if c == -1: gs_flg[clust_mask] = -1
+        else: gs_flg[clust_mask] = ribiero_gs_flg(vel[clust_mask], t[clust_mask])
+    df[flag] = gs_flg
+    return df
