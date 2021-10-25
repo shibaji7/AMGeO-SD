@@ -11,6 +11,9 @@ __maintainer__ = "Chakraborty, S."
 __email__ = "shibaji7@vt.edu"
 __status__ = "Research"
 
+import sys
+sys.path.extend(["py/"])
+
 import os
 import numpy as np
 import pandas as pd
@@ -160,12 +163,13 @@ def _run_riberio_threshold(u, beam):
     df["ribiero_gflg"] = gs_flg
     return df
 
-def _run_riberio_threshold_on_rad(u, flag="ribiero_gflg"):
+def _run_riberio_threshold_on_rad(u, flag="gflg_ribiero"):
     df = u.copy()
     clust_flag = np.array(df.cluster_tag)
     gs_flg = np.zeros_like(clust_flag)
     vel = np.hstack(np.abs(df.v))
     t = np.hstack(df.time.apply(lambda x: date2num(x)))
+    clust_flag[np.array(df.slist) < 7] = -1
     gs_flg = np.zeros_like(clust_flag)
     for c in np.unique(clust_flag):
         clust_mask = c == clust_flag

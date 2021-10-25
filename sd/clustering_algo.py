@@ -44,6 +44,9 @@ import time
 from netCDF4 import Dataset, date2num
 
 from string import ascii_uppercase
+from fan_rti import RangeTimeIntervalPlot as RTI, FanPlots
+from matplotlib.dates import date2num
+        
 
 
 def get_mean_sza(dn, mbeam, mgate, rad="bks"):
@@ -834,4 +837,64 @@ class ScatterTypeDetection(object):
                     if self.case == 1: gflg = (np.abs(v)+w/4 < 60).astype(int)
                     if self.case == 2: gflg = (np.abs(v)-0.139*w+0.00113*w**2<33.1).astype(int)
                     self.gs_flg[clust_mask] = gflg
+        return
+
+class DBScan(object):
+    """ Class to cluster 2D or 3D data """
+    
+    def __init__(self, args):
+        for k in vars(args).keys():
+            setattr(self, k, vars(args)[k])
+        self.s_params = ["bmnum", "intt.sc", "intt.us", "mppul", "noise.sky", "nrang", "scan", "tfreq", "time"]
+        self.v_params = ["p_l", "v", "w_l", "slist"]
+        self.out_dir = utils.get_config("BASE_DIR") + self.sim_id + "/" + self.rad + "/"    
+        self.scan_info = fetch_print_fit_rec(self.rad, self.start, self.start + dt.timedelta(minutes=5))
+        self.io = FetchData( self.rad, [self.start, self.end], ftype=self.ftype, verbose=self.verbose)
+        self.beams, self.scans = self.io.fetch_data(by="scan", scan_prop=self.scan_info)
+        self.frame = self.io.scans_to_pandas(self.scans, self.s_params, self.v_params)
+        self.run_2D_cluster_bybeam()
+        return
+    
+    def plot_rti_images(self, _o, b):
+        _o["mdates"] = _o.time.apply(lambda x: date2num(x))
+        rti = RTI(100, unique_times=np.unique(_o.mdates), fig_title="")
+        rti.addParamPlot(_o, b, "", xlabel="")
+        rti.addCluster(_o, b, "")
+        rti.addGSIS(_o, b, "", xlabel="Time, [UT]")
+        rti.save(self.out_dir + "%02d.png"%b)
+        rti.close()
+        return
+    
+    def run_2D_cluster_bybeam(self):
+        o = pd.DataFrame()
+        self.v_params = self.v_params + ["cluster_tag", "gflg_ribiero"]
+        self.s_params = self.s_params + ["scnum"]
+        if self.scan_info["s_mode"] != "normal": 
+            logger.info(f"Radar mode - {self.scan_info['s_mode']} on beam - {self.scan_info['t_beam']}")
+        for b in np.unique(self.frame.bmnum):
+            _o = self.frame[self.frame.bmnum==b]
+            _o.slist, _o.scnum, eps, min_samples = _o.slist/self.eps_g, _o.scnum/self.eps_s, self.eps, self.min_samples
+            if self.scan_info["s_mode"] != "normal" and self.scan_info["t_beam"] == b: min_samples = self.min_samples*self.tb_mult
+            ds = DBSCAN(eps=self.eps, min_samples=min_samples).fit(_o[["slist", "scnum"]].values)
+            _o["cluster_tag"] = ds.labels_
+            _o = utils._run_riberio_threshold_on_rad(_o)
+            self.plot_rti_images(_o, b)
+            o = pd.concat([o, _o])
+        o = o.sort_values("time")
+        self.plot_fov_images(o, o.time.tolist()[0])
+        o["gflg_conv"], o["gflg_kde"] = o.gflg_ribiero, o.gflg_ribiero
+        scans = self.io.pandas_to_scans(o, self.scan_info["s_mode"], self.s_params, self.v_params)
+        return
+    
+    def plot_fov_images(self, o, dn):
+        fov = FanPlots()
+        fov.plot_fov(o[(o.time>=dn) & (o.time < 
+                                           dn + dt.timedelta(minutes=self.scan_info["s_time"]))], 
+                     dn, self.rad)
+        fov.save(self.out_dir + "%s_fov.png"%dn.strftime("%Y-%m-%d %H:%M"))
+        fov.close()
+        return
+    
+    def run_med_filt(self):
+        self.v_params = self.v_params + ["v_mad", "gflg_conv", "gflg_kde"]
         return

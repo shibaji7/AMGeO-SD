@@ -29,13 +29,14 @@ import pydarn
 import sys
 sys.path.append("tools/")
 import rad_fov
+import utils
 
 class SDCarto(GeoAxes):
     name = "sdcarto"
 
     def __init__(self, *args, **kwargs):
         self.supported_coords = [ "geo", "aacgmv2", "aacgmv2_mlt" ]
-        if "coords" in kwargs and kwargs.pop("coords") is not None:
+        if "coords" in kwargs and kwargs["coords"] is not None:
             self.coords = kwargs.pop("coords")
             if self.coords not in self.supported_coords:
                 err_str = "Coordinates not supported, choose from : "
@@ -44,14 +45,13 @@ class SDCarto(GeoAxes):
                     else: err_str += _sc
                 raise TypeError(err_str)
         else: self.coords = "geo"
-        if "map_projection" in kwargs and kwargs.pop("map_projection") is not None: self.map_projection = kwargs.pop("map_projection")
+        if "map_projection" in kwargs and kwargs["map_projection"] is not None: self.map_projection = kwargs.pop("map_projection")
         else: self.map_projection = cartopy.crs.PlateCarree()
-        if "rad" in kwargs and kwargs.pop("rad") is not None: self.rad = kwargs.pop("rad")
-        else: self.rad = "bks"
-        if "plot_date" in kwargs and kwargs.pop("plot_date") is not None: self.plot_date = kwargs.pop("plot_date")
+        if "rad" in kwargs and kwargs["rad"] is not None: self.rad = kwargs.pop("rad")
+        if "plot_date" in kwargs and kwargs["plot_date"] is not None: self.plot_date = kwargs.pop("plot_date")
         else:
             if self.coords == "aacgmv2" or self.coords == "aacgmv2_mlt":
-                raise TypeError("Need to provide a date using "plot_date" keyword for aacgmv2 plotting")
+                raise TypeError("Need to provide a date using 'plot_date' keyword for aacgmv2 plotting")
         super().__init__(map_projection=self.map_projection,*args, **kwargs)
         return
     
@@ -85,7 +85,7 @@ class SDCarto(GeoAxes):
             super().add_feature(aacgm_feature, **kwargs)
         return
 
-    def grid_on(self, tx=cartopy.crs.PlateCarree(), draw_labels=[True, True, True, True], 
+    def grid_on(self, tx=cartopy.crs.PlateCarree(), draw_labels=[False, False, True, True], 
                 linewidth=0.5, color="gray", alpha=0.5, linestyle="--"):
         """ Adding grids to map """
         import matplotlib.ticker as mticker
@@ -102,31 +102,33 @@ class SDCarto(GeoAxes):
         gl.yformatter = LATITUDE_FORMATTER
         return
     
-    def overlay_radar(self, tx=cartopy.crs.PlateCarree(), zorder=2, markerColor="darkblue", markerSize=15, fontSize=10, font_color="k",
+    def overlay_radar(self, rad, tx=cartopy.crs.PlateCarree(), zorder=2, markerColor="darkblue", markerSize=15, fontSize=10, font_color="k",
             xOffset=None, yOffset=-0.1, annotate=True):
         """ Adding the radar location """
-        self.hdw = pydarn.read_hdw_file(self.rad)
+        if hasattr(self, rad) and rad is None: rad = self.rad 
+        self.hdw = pydarn.read_hdw_file(rad)
         print(" Radar:", self.hdw.geographic.lon, self.hdw.geographic.lat)
         self.scatter([self.hdw.geographic.lon], [self.hdw.geographic.lat], s=markerSize, marker="D",
                 color=markerColor, zorder=zorder, transform=tx)
         nearby_rad = [["adw", "kod", "cve", "fhe", "wal", "gbr", "pyk", "aze", "sys"],
                             ["ade", "ksr", "cvw", "fhw", "bks", "sch", "sto", "azw", "sye"]]
         if annotate:
-            if self.rad in nearby_rad[0]: xOff, ha = 0.1 if not xOffset else xOffset, 0
-            elif self.rad in nearby_rad[1]: xOff, ha = -0.1 if not xOffset else xOffset, 1
+            if rad in nearby_rad[0]: xOff, ha = 0.1 if not xOffset else xOffset, 0
+            elif rad in nearby_rad[1]: xOff, ha = -0.1 if not xOffset else xOffset, 1
             else: xOff, ha = 0.0, 0.5
             lon, lat = self.hdw.geographic.lon, self.hdw.geographic.lat
             x, y = self.projection.transform_point(lon, lat, src_crs=tx)
         return
     
-    def overlay_fov(self, tx=cartopy.crs.PlateCarree(), maxGate=75, rangeLimits=None, beamLimits=None,
+    def overlay_fov(self, rad=None, tx=cartopy.crs.PlateCarree(), maxGate=75, rangeLimits=None, beamLimits=None,
             model="IS", fov_dir="front", fovColor=None, fovAlpha=0.2,
             fovObj=None, zorder=2, lineColor="k", lineWidth=1, ls="-"):
         """ Overlay radar FoV """
+        if hasattr(self, rad) and rad is None: rad = self.rad 
         self.maxGate = maxGate
         lcolor = lineColor
         from numpy import transpose, ones, concatenate, vstack, shape
-        self.hdw = pydarn.read_hdw_file(self.rad)
+        self.hdw = pydarn.read_hdw_file(rad)
         sgate = 0
         egate = self.hdw.gates if not maxGate else maxGate
         ebeam = self.hdw.beams
@@ -149,15 +151,11 @@ class SDCarto(GeoAxes):
             self.add_patch(patch)
         return
     
-    def enum(self, bounds=[-120, -70, 25, 70], text_coord=False, dtype=None):
-        if bounds is not None: self.set_extent(bounds)
-        if text_coord: 
-            if self.coords == "geo": self.text(1.05, 0.7, "Geographic Coordinates", horizontalalignment="center",
-                                               verticalalignment="center", transform=self.transAxes, rotation=90)
-        self.text(0.1, 1.02, "Rad: "+self.rad, horizontalalignment="center",
-                verticalalignment="center", transform=self.transAxes)
+    def enum(self, add_date=True, add_coord=True, dtype=None):
+        if add_coord: self.text(0.01, 1.05, "Coords: %s"%self.coords, horizontalalignment="left",
+                                verticalalignment="center", transform=self.transAxes)
         if dtype is not None: self.text(1.03, 0.1, dtype, ha="center", va="center", transform=self.transAxes, rotation=90)
-        if self.plot_date: self.text(0.75, 1.02, self.plot_date.strftime("%Y-%m-%d %H:%M") + " UT", horizontalalignment="center",
+        if add_date: self.text(0.99, 1.05, self.plot_date.strftime("%Y-%m-%d %H:%M") + " UT", horizontalalignment="right",
                 verticalalignment="center", transform=self.transAxes)
         return
 
@@ -168,63 +166,93 @@ class SDCarto(GeoAxes):
             ns_feature = Nightshade(self.plot_date, alpha=0.2)
             super().add_feature(feature, **kwargs)
         return
+    
+    def data_lay(self, df, rf, p_name, to, fm, idx=None, gflg_mask=None):
+        """
+        Data scatter-plots
+        """
+        o = df[df[gflg_mask]==idx] if (idx is not None) and (gflg_mask is not None) else df.copy()
+        lons, lats = rf.lonFull, rf.latFull
+        Xb, Yg, Px = utils.get_gridded_parameters(o, xparam="bmnum", yparam="slist", zparam=p_name, rounding=True)
+        Xb, Yg = Xb.astype(int), Yg.astype(int)
+        lons, lats = lons[Xb.ravel(), Yg.ravel()].reshape(Xb.shape), lats[Xb.ravel(), Yg.ravel()].reshape(Xb.shape)
+        XYZ = to.transform_points(fm, lons, lats)
+        Px = np.ma.masked_invalid(Px)
+        return XYZ[:,:,0], XYZ[:,:,1], Px
 
-    def overlay_radar_data(self, df, p_name = "v", tx=cartopy.crs.PlateCarree(), 
+    def overlay_radar_data(self, rad, df, to, fm, p_name = "v", 
                            p_max=100, p_min=-100, p_step=10, p_ub=9999, p_lb=-9999,
-                           cmap=matplotlib.pyplot.get_cmap("Spectral"), 
-                           add_colorbar=True, colorbar_label="Velocity [m/s]", 
-                           gflg_mask=True, **kwargs):
+                           cmap="Spectral", add_colorbar=True, colorbar_label="Velocity [m/s]", 
+                           gflg_mask=None, **kwargs):
         """ 
             Adding radar data
             df: dataframe object
         """
-        nbeam = np.max(np.max(dat["bmnum"])) + 1
+        cmap = matplotlib.pyplot.get_cmap("jet") if cmap is None else matplotlib.pyplot.get_cmap(cmap)
+        gflg_map={
+            1: {"col": matplotlib.colors.ListedColormap(["0.5"]), "key":"gs"},
+            -1: {"col": matplotlib.colors.ListedColormap(["0.2"]), "key":"us"},
+            0: {"col": cmap, "key": None},
+        }
+        nbeam = np.max(np.max(df.bmnum)) + 1
         if self.maxGate: nrange = self.maxGate
         else: nrange = np.max(np.max(dat["slist"])) + 1
-        hdw = pydarn.read_hdw_file(self.rad)
+        hdw = pydarn.read_hdw_file(rad)
         rf = rad_fov.CalcFov(hdw=hdw, ngates=nrange, nbeams=nbeam)
-        lons, lats = rf.lonFull, rf.latFull
         
-        Xb, Yg, Px = utils.get_gridded_parameters(df, xparam="bmnum", yparam="slist", zparam=zparam)
-        lons, lats = lons[Xb.ravel(), Yg.ravel()], lats[Xb.ravel(), Yg.ravel()]
         p_ranges = list(range(p_min, p_max + 1, p_step))
         p_ranges.insert(0, p_lb)
         p_ranges.append(p_ub)
         
-        #Px, Gs = np.zeros((nbeam, nrange))*np.nan, np.zeros((nbeam, nrange))
-        #idbs, idgs = dat["bmnum"], dat["slist"]
-        #params, gflgs = dat[p_name], dat["gflg"]
-        #for idb, idg, par, gflg in zip(idbs, idgs, params, gflgs):
-        #    idb = np.array(idb)[np.array(idg) < nrange]
-        #    par = np.array(par)[np.array(idg) < nrange]
-        #    gflg = np.array(gflg)[np.array(idg) < nrange]
-        #    idg = np.array(idg)[np.array(idg) < nrange]
-        #    if len(par) > 0: 
-        #        Px[idb, np.round(idg).astype(int)] = par
-        #        Gs[idb, np.round(idg).astype(int)] = gflg
-        if not gflg_mask: 
-            Px = np.ma.masked_invalid(Px)
-            self.pcolormesh(lons, lats, Px, transform=tx, cmap=cmap,
-                          vmax=p_max, vmin=p_min, **kwargs)    
+        if gflg_mask:
+            for key in gflg_map.keys():
+                cmap = gflg_map[key]["col"]
+                X, Y, Px = self.data_lay(df, rf, p_name, to, fm, idx=key, gflg_mask=gflg_mask)
+                self.pcolormesh(X, Y, Px.T, transform=to, cmap=cmap, vmax=p_max, vmin=p_min, **kwargs)
+                if add_colorbar and gflg_map[key]["key"] is None: self._add_colorbar(p_ranges, cmap, label=colorbar_label)
+                else: self._add_key_specific_colorbar(cmap, label=gflg_map[key]["key"], idh=key)
         else:
-            Gs = Gs.astype(bool)
-            Pi, Pg = np.ma.masked_invalid(np.ma.masked_where(Gs, Px)),\
-                        np.ma.masked_invalid(np.ma.masked_where(np.logical_not(Gs), Px))
-            self.pcolormesh(lons, lats, Pi, transform=tx, cmap=cmap,
-                            vmax=p_max, vmin=p_min, **kwargs)
-            gcmap = matplotlib.colors.ListedColormap(["0.6"])
-            self.pcolormesh(lons, lats, Pg, transform=tx, cmap=gcmap,
-                            vmax=p_max, vmin=p_min, **kwargs)
-        if add_colorbar: 
-            self._add_colorbar(p_ranges, cmap, label=colorbar_label)
-            if gflg_mask: self._add_key_specific_colorbar(gcmap)
+            X, Y, Px = self.data_lay(df, rf, p_name, to, fm)
+            self.pcolormesh(X, Y, Px.T, transform=to, cmap=cmap, vmax=p_max, vmin=p_min, **kwargs)
+            if add_colorbar: self._add_colorbar(p_ranges, cmap, label=colorbar_label)
+            
+#         if gflg_mask:
+#             _, _, Is = utils.get_gridded_parameters(df[df[gflg_mask]==0], xparam="bmnum", 
+#                                                     yparam="slist", zparam=gflg_mask, rounding=True)
+#             Is = Is.astype(bool)
+#             Pi = np.ma.masked_invalid(np.ma.masked_where(Is, Px))
+#             self.pcolormesh(XYZ[:,:,0], XYZ[:,:,1], Pi.T, transform=to, cmap=cmap,
+#                             vmax=p_max, vmin=p_min, **kwargs)
+            
+#             unique_ids = np.unique(df[gflg_mask])
+#             for idx in np.unique(df[gflg_mask]):
+#                 if idx in gflg_map.keys():
+#                     _, _, Ss = utils.get_gridded_parameters(df[df[gflg_mask]==idx], xparam="bmnum", 
+#                                                             yparam="slist", zparam=gflg_mask, rounding=True)
+#                     Ss = Ss.astype(bool)
+#                     Ps = np.ma.masked_invalid(np.ma.masked_where(np.ma.masked_where(np.logical_not(Ss==idx), Px)))
+#                     gcmap = matplotlib.colors.ListedColormap([gflg_map[idx]["col"]])
+#                     self.pcolormesh(XYZ[:,:,0], XYZ[:,:,1], Ps.T, transform=to, cmap=gcmap,
+#                                 vmax=p_max, vmin=p_min, **kwargs)
+#         else:
+#             Px = np.ma.masked_invalid(Px)
+#             self.pcolormesh(XYZ[:,:,0], XYZ[:,:,1], Px.T, cmap=cmap, transform=to, alpha=0.8,
+#                           vmax=p_max, vmin=p_min, **kwargs)
+#        if add_colorbar: 
+#            self._add_colorbar(p_ranges, cmap, label=colorbar_label)
+#             if gflg_mask: 
+#                 unique_ids = np.unique(df[gflg_mask])
+#                 for idx in np.unique(df[gflg_mask]):
+#                     if idx in gflg_map.keys():
+#                         gcmap = matplotlib.colors.ListedColormap([gflg_map[idx]["col"]])
+#                         self._add_key_specific_colorbar(gcmap, label=gflg_map[idx]["key"], idh=idx)
         return
     
     def _add_colorbar(self, bounds, colormap, label=""):
         """ Add a colorbar to the right of an axis. """
         pos = self.get_position()
         cpos = [pos.x1 + 0.035, pos.y0 + 0.25*pos.height,
-                0.01, pos.height * 0.5]            # this list defines (left, bottom, width, height)
+                0.03, pos.height * 0.5]            # this list defines (left, bottom, width, height)
         cax = matplotlib.pyplot.gcf().add_axes(cpos)
         norm = matplotlib.colors.BoundaryNorm(bounds[::2], colormap.N)
         cb2 = matplotlib.colorbar.ColorbarBase(cax, cmap=colormap,
@@ -239,7 +267,7 @@ class SDCarto(GeoAxes):
         cb2.ax.set_yticklabels(ticks)
         return
     
-    def overlay_fitacfp_radar_data(self, dat, p_name = "v", tx=cartopy.crs.PlateCarree(), 
+    def overlay_fitacfp_radar_data(self, df, p_name = "v", tx=cartopy.crs.PlateCarree(), 
                            p_max=100, p_min=-100, p_step=10, p_ub=9999, p_lb=-9999,
                            cmap=matplotlib.pyplot.get_cmap("Spectral"), 
                            add_colorbar=True, colorbar_label="Velocity [m/s]", gflg_key="gflg", 
@@ -288,175 +316,17 @@ class SDCarto(GeoAxes):
         """ Add a colorbar to the right of an axis. """
         pos = self.get_position()
         cpos = [pos.x1 + 0.035, pos.y0 + ((idh-1)*.1+0.05)*pos.height,
-                0.01, 0.02]            # this list defines (left, bottom, width, height)
+                0.03, 0.02]            # this list defines (left, bottom, width, height)
         cax = matplotlib.pyplot.gcf().add_axes(cpos)
         cb2 = matplotlib.colorbar.ColorbarBase(cax, cmap=colormap,
                 spacing="uniform",
                 orientation="vertical")
         cb2.ax.tick_params(size=0)
-        cb2.ax.text(0.5,-.3,label,fontdict={"size":6}, ha="center", va="center")
+        cb2.ax.text(0.5,-.3,label,fontdict={"size":10}, ha="center", va="center")
         # Remove the outer bounds in tick labels
         cb2.ax.set_yticklabels([])
         return
     
-    
-    def get_aacgm_geom(self, feature, out_height=300. ):
-        new_i = []
-        # cartopy.feature.COASTLINE
-        for _n,i in enumerate(feature.geometries()):
-            aa = mapping(i)
-            mag_list = []
-            geo_coords = aa["coordinates"]
-            for _ni, _list in enumerate(geo_coords):
-                mlon_check_jump_list = []
-                split_mag_list = None
-                if len(_list) == 1:
-                    _loop_list = _list[0]
-                else:
-                    _loop_list = _list
-                for _ngc, _gc in enumerate(_loop_list):
-                    _mc = aacgmv2.get_aacgm_coord(_gc[1], _gc[0], out_height, self.plot_date)
-                    if numpy.isnan(_mc[0]):
-                        continue 
-                    mlon_check_jump_list.append( _mc[1] )
-                    if self.coords == "aacgmv2":
-                        mag_list.append( (_mc[1], _mc[0]) )
-                    else:
-                        if _mc[2]*15. > 180.:
-                            mag_list.append( (_mc[2]*15.-360., _mc[0]) )
-                        else:
-                            mag_list.append( (_mc[2]*15., _mc[0]) )
-                # check for unwanted jumps
-                mlon_check_jump_list = numpy.array( mlon_check_jump_list )
-
-                jump_arr = numpy.diff( mlon_check_jump_list )
-                bad_inds = numpy.where( numpy.abs(jump_arr) > 10.)[0]
-                # delete the range of bad values
-                # This is further complicated because
-                # in some locations mlon jumps from -177 to +178
-                # and this causes jumps in the maps! To deal with 
-                # this we'll split arrays of such jumps 
-                # (these jumps typically have just one bad ind )
-                # and make them into two seperate entities (LineStrings)
-                # so that shapely will treat them as two seperate boundaries!
-                if len(bad_inds) > 0:
-                    if len(bad_inds) > 1:
-                        mag_list = [i for j, i in enumerate(mag_list) if j-1 not in numpy.arange(bad_inds[0], bad_inds[1])]
-                    else:
-                        split_mag_list = mag_list[bad_inds[0]+1:]
-                        mag_list = mag_list[:bad_inds[0]+1]
-                mag_coords = tuple(mag_list)
-                if len(mag_list) > 1:
-                    new_i.append( mag_coords )
-                if split_mag_list is not None:
-        #             print(split_mag_list)
-                    if len(split_mag_list) > 1:
-                        new_i.append( tuple(split_mag_list) )
-
-        aacgm_coast = MultiLineString( new_i )
-        return aacgm_coast
-    
-    def mark_latitudes(self, lat_arr, lon_location=45, **kwargs):
-        """
-        mark the latitudes
-        Write down the latitudes on the map for labeling!
-        we are using this because cartopy doesn't have a 
-        label by default for non-rectangular projections!
-        """
-        if isinstance(lat_arr, list):
-            lat_arr = numpy.array(lat_arr)
-        else:
-            if not isinstance(lat_arr, numpy.ndarray):
-                raise TypeError('lat_arr must either be a list or numpy array')
-        # make an array of lon_location
-        lon_location_arr = numpy.full( lat_arr.shape, lon_location )
-        proj_xyz = self.projection.transform_points(\
-                            cartopy.crs.Geodetic(),\
-                            lon_location_arr,\
-                            lat_arr
-                            )
-        # plot the lats now!
-        out_extent_lats = False
-        for _np,_pro in enumerate(proj_xyz[..., :2].tolist()):
-            # check if lats are out of extent! if so ignore them
-            lat_lim = self.get_extent(crs=cartopy.crs.Geodetic())[2::]
-            if (lat_arr[_np] >= min(lat_lim)) and (lat_arr[_np] <= max(lat_lim)):
-                self.text( _pro[0], _pro[1], str(lat_arr[_np]), **kwargs)
-            else:
-                out_extent_lats = True
-        if out_extent_lats:
-            print( "some lats were out of extent ignored them" )
-
-    def mark_longitudes(self, lon_arr=numpy.arange(-180,180,60), **kwargs):
-        """
-        mark the longitudes
-        Write down the longitudes on the map for labeling!
-        we are using this because cartopy doesn't have a 
-        label by default for non-rectangular projections!
-        This is also trickier compared to latitudes!
-        """
-        if isinstance(lon_arr, list):
-            lon_arr = numpy.array(lon_arr)
-        else:
-            if not isinstance(lon_arr, numpy.ndarray):
-                raise TypeError('lat_arr must either be a list or numpy array')
-        # get the boundaries
-        [x1, y1], [x2, y2] = self.viewLim.get_points()
-        bound_lim_arr = []
-        right_bound = LineString(([-x1, y1], [x2, y2]))
-        top_bound = LineString(([x1, -y1], [x2, y2]))
-        bottom_bound = LineString(([x1, y1], [x2, -y2]))
-        left_bound = LineString(([x1, y1], [-x2, y2]))
-        plot_outline = MultiLineString( [\
-                                        right_bound,\
-                                        top_bound,\
-                                        bottom_bound,\
-                                        left_bound\
-                                        ] )
-        # get the plot extent, we'll get an intersection
-        # to locate the ticks!
-        plot_extent = self.get_extent(cartopy.crs.Geodetic())
-        line_constructor = lambda t, n, b: numpy.vstack(\
-                        (numpy.zeros(n) + t, numpy.linspace(b[2], b[3], n))\
-                        ).T
-        for t in lon_arr:
-            xy = line_constructor(t, 30, plot_extent)
-            # print(xy)
-            proj_xyz = self.projection.transform_points(\
-                            cartopy.crs.PlateCarree(), xy[:, 0], xy[:, 1]\
-                            )
-            xyt = proj_xyz[..., :2]
-            ls = LineString(xyt.tolist())
-            locs = plot_outline.intersection(ls)
-            if not locs:
-                continue
-            # we need to get the alignment right
-            # so get the boundary closest to the label
-            # and plot it!
-            closest_bound =min( [\
-                            right_bound.distance(locs),\
-                            top_bound.distance(locs),\
-                            bottom_bound.distance(locs),\
-                            left_bound.distance(locs)\
-                            ] )
-            if closest_bound == right_bound.distance(locs):
-                ha = 'left'
-                va = 'top'
-            elif closest_bound == top_bound.distance(locs):
-                ha = 'left'
-                va = 'bottom'
-            elif closest_bound == bottom_bound.distance(locs):
-                ha = 'left'
-                va = 'top'
-            else:
-                ha = 'right'
-                va = 'top'
-            if self.coords == "aacgmv2_mlt":
-                marker_text = str(int(t/15.))
-            else:
-                marker_text = str(t)
-            self.text( locs.bounds[0],locs.bounds[1], marker_text, ha=ha, va=va)
-
 register_projection(SDCarto)
 
 

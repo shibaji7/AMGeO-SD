@@ -134,4 +134,3 @@ dependencies:
     - scipy==1.5.4
     - spacepy==0.2.1
     - tables==3.6.1
-prefix: /home/shibaji/anaconda3/envs/amgeo
