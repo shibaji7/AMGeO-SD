@@ -73,12 +73,13 @@ class FanPlots(object):
         ax.enum()
         return ax
     
-    def plot_fov(self, df, date, rad, gflg_mask="gflg_ribiero"):
+    def plot_fov(self, df, date, rad, gflg_mask="gflg_ribiero", add_colorbar=True):
         """ Plot data - overlay on top of map """
         ax = self._add_axis(date)
         ax.overlay_radar(rad)
         ax.overlay_fov(rad)
-        ax.overlay_radar_data(rad, df, self.orthographic, self.geodetic, gflg_mask=gflg_mask)
+        ax.overlay_radar_data(rad, df, self.orthographic, self.geodetic, gflg_mask=gflg_mask, 
+                              add_colorbar=add_colorbar)
         return
     
     def save(self, filepath):

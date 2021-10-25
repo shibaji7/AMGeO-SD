@@ -103,21 +103,22 @@ class SDCarto(GeoAxes):
         return
     
     def overlay_radar(self, rad, tx=cartopy.crs.PlateCarree(), zorder=2, markerColor="darkblue", markerSize=15, fontSize=10, font_color="k",
-            xOffset=None, yOffset=-0.1, annotate=True):
+            xOffset=None, yOffset=-1.5, annotate=True):
         """ Adding the radar location """
         if hasattr(self, rad) and rad is None: rad = self.rad 
         self.hdw = pydarn.read_hdw_file(rad)
-        print(" Radar:", self.hdw.geographic.lon, self.hdw.geographic.lat)
         self.scatter([self.hdw.geographic.lon], [self.hdw.geographic.lat], s=markerSize, marker="D",
                 color=markerColor, zorder=zorder, transform=tx)
         nearby_rad = [["adw", "kod", "cve", "fhe", "wal", "gbr", "pyk", "aze", "sys"],
                             ["ade", "ksr", "cvw", "fhw", "bks", "sch", "sto", "azw", "sye"]]
         if annotate:
-            if rad in nearby_rad[0]: xOff, ha = 0.1 if not xOffset else xOffset, 0
-            elif rad in nearby_rad[1]: xOff, ha = -0.1 if not xOffset else xOffset, 1
+            if rad in nearby_rad[0]: xOff, ha = 1.5 if not xOffset else xOffset, 0
+            elif rad in nearby_rad[1]: xOff, ha = -1.5 if not xOffset else xOffset, 1
             else: xOff, ha = 0.0, 0.5
-            lon, lat = self.hdw.geographic.lon, self.hdw.geographic.lat
+            lon, lat = self.hdw.geographic.lon+xOff, self.hdw.geographic.lat+yOffset
             x, y = self.projection.transform_point(lon, lat, src_crs=tx)
+            self.text(x, y, rad.upper(), ha="center", va="center", transform=self.projection,
+                     fontdict={"color":markerColor})
         return
     
     def overlay_fov(self, rad=None, tx=cartopy.crs.PlateCarree(), maxGate=75, rangeLimits=None, beamLimits=None,
@@ -215,44 +216,13 @@ class SDCarto(GeoAxes):
             X, Y, Px = self.data_lay(df, rf, p_name, to, fm)
             self.pcolormesh(X, Y, Px.T, transform=to, cmap=cmap, vmax=p_max, vmin=p_min, **kwargs)
             if add_colorbar: self._add_colorbar(p_ranges, cmap, label=colorbar_label)
-            
-#         if gflg_mask:
-#             _, _, Is = utils.get_gridded_parameters(df[df[gflg_mask]==0], xparam="bmnum", 
-#                                                     yparam="slist", zparam=gflg_mask, rounding=True)
-#             Is = Is.astype(bool)
-#             Pi = np.ma.masked_invalid(np.ma.masked_where(Is, Px))
-#             self.pcolormesh(XYZ[:,:,0], XYZ[:,:,1], Pi.T, transform=to, cmap=cmap,
-#                             vmax=p_max, vmin=p_min, **kwargs)
-            
-#             unique_ids = np.unique(df[gflg_mask])
-#             for idx in np.unique(df[gflg_mask]):
-#                 if idx in gflg_map.keys():
-#                     _, _, Ss = utils.get_gridded_parameters(df[df[gflg_mask]==idx], xparam="bmnum", 
-#                                                             yparam="slist", zparam=gflg_mask, rounding=True)
-#                     Ss = Ss.astype(bool)
-#                     Ps = np.ma.masked_invalid(np.ma.masked_where(np.ma.masked_where(np.logical_not(Ss==idx), Px)))
-#                     gcmap = matplotlib.colors.ListedColormap([gflg_map[idx]["col"]])
-#                     self.pcolormesh(XYZ[:,:,0], XYZ[:,:,1], Ps.T, transform=to, cmap=gcmap,
-#                                 vmax=p_max, vmin=p_min, **kwargs)
-#         else:
-#             Px = np.ma.masked_invalid(Px)
-#             self.pcolormesh(XYZ[:,:,0], XYZ[:,:,1], Px.T, cmap=cmap, transform=to, alpha=0.8,
-#                           vmax=p_max, vmin=p_min, **kwargs)
-#        if add_colorbar: 
-#            self._add_colorbar(p_ranges, cmap, label=colorbar_label)
-#             if gflg_mask: 
-#                 unique_ids = np.unique(df[gflg_mask])
-#                 for idx in np.unique(df[gflg_mask]):
-#                     if idx in gflg_map.keys():
-#                         gcmap = matplotlib.colors.ListedColormap([gflg_map[idx]["col"]])
-#                         self._add_key_specific_colorbar(gcmap, label=gflg_map[idx]["key"], idh=idx)
         return
     
     def _add_colorbar(self, bounds, colormap, label=""):
         """ Add a colorbar to the right of an axis. """
         pos = self.get_position()
-        cpos = [pos.x1 + 0.035, pos.y0 + 0.25*pos.height,
-                0.03, pos.height * 0.5]            # this list defines (left, bottom, width, height)
+        cpos = [pos.x1 + 0.035, pos.y0 + 0.4*pos.height,
+                0.015, pos.height * 0.5]            # this list defines (left, bottom, width, height)
         cax = matplotlib.pyplot.gcf().add_axes(cpos)
         norm = matplotlib.colors.BoundaryNorm(bounds[::2], colormap.N)
         cb2 = matplotlib.colorbar.ColorbarBase(cax, cmap=colormap,
@@ -267,62 +237,17 @@ class SDCarto(GeoAxes):
         cb2.ax.set_yticklabels(ticks)
         return
     
-    def overlay_fitacfp_radar_data(self, df, p_name = "v", tx=cartopy.crs.PlateCarree(), 
-                           p_max=100, p_min=-100, p_step=10, p_ub=9999, p_lb=-9999,
-                           cmap=matplotlib.pyplot.get_cmap("Spectral"), 
-                           add_colorbar=True, colorbar_label="Velocity [m/s]", gflg_key="gflg", 
-                           gflg_map={1:{"key":"gs", "col":"0.8"}, 2:{"key":"us", "col":"0.5"}}, **kwargs):
-        """ 
-            Adding radar data
-            dat: dict()-> with "bmnum", "slist" and "v" or other parameter in list of list format
-        """
-        if len(dat["bmnum"]) == 0: return
-        nbeam = np.max(np.max(dat["bmnum"])) + 1
-        if self.maxGate: nrange = self.maxGate
-        else: nrange = np.max(np.max(dat["slist"])) + 1
-        hdw = pydarn.read_hdw_file(self.rad)
-        rf = rad_fov.CalcFov(hdw=hdw, ngates=nrange, nbeams=nbeam)
-        lons, lats = rf.lonFull, rf.latFull
-        
-        Xb, Yg, Px = utils.get_gridded_parameters(df, xparam="bmnum", yparam="slist", zparam=zparam)
-        lons, lats = lons[Xb.ravel(), Yg.ravel()], lats[Xb.ravel(), Yg.ravel()]
-        p_ranges = list(range(p_min, p_max + 1, p_step))
-        p_ranges.insert(0, p_lb)
-        p_ranges.append(p_ub)       
-                
-        #Px, Gs = np.zeros((nbeam, nrange))*np.nan, np.zeros((nbeam, nrange))
-        #idbs, idgs = dat["bmnum"], dat["slist"]
-        #params, gflgs = dat[p_name], dat[gflg_key]
-        #for idb, idg, par, gflg in zip(idbs, idgs, params, gflgs):
-        #    idb = np.array(idb)[np.array(idg) < nrange]
-        #    par = np.array(par)[np.array(idg) < nrange]
-        #    gflg = np.array(gflg)[np.array(idg) < nrange]
-        #    idg = np.array(idg)[np.array(idg) < nrange]
-        #    if len(par) > 0: 
-        #        Px[idb, np.round(idg).astype(int)] = par
-        #        Gs[idb, np.round(idg).astype(int)] = gflg
-        unique = max(gflg_map.keys())
-        for uq in range(int(unique) + 1):
-            Puq = np.ma.masked_invalid(np.ma.masked_where(np.logical_not(Gs==uq), Px))
-            if uq > 0: cmap = matplotlib.colors.ListedColormap([gflg_map[uq]["col"]])
-            self.pcolormesh(lons, lats, Puq, transform=tx, cmap=cmap,
-                        vmax=p_max, vmin=p_min, **kwargs)
-            if add_colorbar:
-                if uq==0: self._add_colorbar(p_ranges, cmap, label=colorbar_label)
-                else: self._add_key_specific_colorbar(cmap, label=gflg_map[uq]["key"], idh=uq)
-        return
-    
     def _add_key_specific_colorbar(self, colormap, label="gs", idh=1):
         """ Add a colorbar to the right of an axis. """
         pos = self.get_position()
-        cpos = [pos.x1 + 0.035, pos.y0 + ((idh-1)*.1+0.05)*pos.height,
-                0.03, 0.02]            # this list defines (left, bottom, width, height)
+        cpos = [pos.x1 + 0.035, pos.y0 + ((idh-1)*.05+0.3)*pos.height,
+                0.015, 0.02]            # this list defines (left, bottom, width, height)
         cax = matplotlib.pyplot.gcf().add_axes(cpos)
         cb2 = matplotlib.colorbar.ColorbarBase(cax, cmap=colormap,
                 spacing="uniform",
                 orientation="vertical")
         cb2.ax.tick_params(size=0)
-        cb2.ax.text(0.5,-.3,label,fontdict={"size":10}, ha="center", va="center")
+        cb2.ax.text(0.5,-.5,label,fontdict={"size":10}, ha="center", va="center")
         # Remove the outer bounds in tick labels
         cb2.ax.set_yticklabels([])
         return

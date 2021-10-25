@@ -887,10 +887,13 @@ class DBScan(object):
         return
     
     def plot_fov_images(self, o, dn):
-        fov = FanPlots()
+        fov = FanPlots(figsize=(10,5), nrows=1, ncols=2)
         fov.plot_fov(o[(o.time>=dn) & (o.time < 
                                            dn + dt.timedelta(minutes=self.scan_info["s_time"]))], 
-                     dn, self.rad)
+                     dn, self.rad, gflg_mask=None, add_colorbar=False)
+        fov.plot_fov(o[(o.time>=dn) & (o.time < 
+                                           dn + dt.timedelta(minutes=self.scan_info["s_time"]))], 
+                     dn, self.rad, gflg_mask="gflg_ribiero")
         fov.save(self.out_dir + "%s_fov.png"%dn.strftime("%Y-%m-%d %H:%M"))
         fov.close()
         return
