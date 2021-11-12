@@ -285,6 +285,7 @@ class FetchData(object):
         """
         Convert the dataframe to scans
         """
+        bmax = 0
         scans = []
         for sn in np.unique(df.scnum):
             o = df[df.scnum==sn]
@@ -293,6 +294,7 @@ class FetchData(object):
                 ox = o[o.sbnum==bn]
                 b = self.pandas_to_beams(ox, s_params, v_params)
                 beams.extend(b)
+            bmax = len(beams) if bmax < len(beams) else bmax
             sc = Scan(None, None, smode)
             sc.beams.extend(beams)
             sc.update_time()
@@ -306,8 +308,8 @@ class FetchData(object):
             mscans.append(sc)
             for i in range(2,len(scans)):
                 mscans.append(scans[i])
-        scans = copy.copy(mscans)
-        return scans
+        scans = copy.copy(mscans) if len(mscans) > 0 else scans
+        return scans, bmax
     
     def fetch_data(self, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us",\
             "mppul", "nrang", "rsep", "cp", "frang", "smsep", "lagfr", "channel"],

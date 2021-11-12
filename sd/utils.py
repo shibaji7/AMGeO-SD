@@ -224,11 +224,11 @@ def geolocate_radar_fov(rad, scan_dates, height=300, azm=False, mag=False):
     o["scan_dates"] = [np.datetime64(d) for d in scan_dates]
     return o
 
-def to_xarray(scans, fov):
+def to_xarray(scans, fov, bmax):
     """
     Convert data to Xarray
     """
-    bmax = len(scans[0].beams)
+    logger.info(f"Max beam depth {bmax}")
     
     def fetch_1D_param(key, tm=False):
         val = np.empty((fov["scans"].max()+1, bmax), dtype="datetime64[us]") if tm else\
@@ -261,8 +261,8 @@ def to_xarray(scans, fov):
     dv = set_param(dv, "gdlat", ["beams", "gates"], fov["glat"], "Latitude", "degree", "Geographic Latitudes at each range cell")
     dv = set_param(dv, "gdlon", ["beams", "gates"], fov["glon"], "Longitude", "degree", "Geographic Latitudes at each range cell")
     dv = set_param(dv, "gdazm", ["beams", "gates"], fov["gazm"], "Ray Azimuth", "degree", "Geographic Ray Azimuth at each range cell")
-    dv = set_param(dv, "scan_dates", ["scan_num"], fov["scan_dates"], "Date time", None, 
-                   "Scan start datetime")
+    #dv = set_param(dv, "scan_dates", ["scan_num"], fov["scan_dates"], "Date time", None, 
+    #               "Scan start datetime")
     dv = set_param(dv, "bmnum", ["scan_num", "sound"], fetch_1D_param("bmnum").astype(int), "Sounding beam", 
                    "1", "Sounding beam number")
     dv = set_param(dv, "noise.sky", ["scan_num", "sound"], fetch_1D_param("noise.sky"), "Sky noise", 

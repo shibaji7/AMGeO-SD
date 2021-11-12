@@ -148,7 +148,7 @@ class PrintFitRec(object):
         def _estimate_scan_duration(dx):
             """ Calculate scan durations in minutes """
             dx = dx[dx.scan==1]
-            dx = dx[dx.bmnum==dx.bmnum.tolist()[0]]
+            #dx = dx[dx.bmnum==dx.bmnum.tolist()[1]]
             sdur = (dx.time.tolist()[-1].to_pydatetime() - dx.time.tolist()[-2].to_pydatetime()).total_seconds()
             return int( (sdur+10)/60. )
 

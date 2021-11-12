@@ -878,14 +878,14 @@ class DBScan(object):
             ds = DBSCAN(eps=self.eps, min_samples=min_samples).fit(_o[["slist", "scnum"]].values)
             _o["cluster_tag"] = ds.labels_
             _o = utils._run_riberio_threshold_on_rad(_o)
-            #self.plot_rti_images(_o, b)
+            self.plot_rti_images(_o, b)
             o = pd.concat([o, _o])
         o = o.sort_values("time")
         self.plot_fov_images(o, dt.datetime(2015,3,17,4,34))
         o["gflg_conv"], o["gflg_kde"] = o.gflg_ribiero, o.gflg_ribiero
-        scans = self.io.pandas_to_scans(o, self.scan_info["s_mode"], self.s_params, self.v_params)
+        scans, bmax = self.io.pandas_to_scans(o, self.scan_info["s_mode"], self.s_params, self.v_params)
         fov = utils.geolocate_radar_fov(self.rad, [s.stime for s in scans], azm=True)
-        ds = utils.to_xarray(scans, fov)
+        ds = utils.to_xarray(scans, fov, bmax)
         ds.to_netcdf(self.out_dir + "fitacf++_%s_%s_%s.nc"%(self.rad, self.start.strftime("%Y%m%d%H%M"),
                                                             self.end.strftime("%Y%m%d%H%M")))
         return
