@@ -20,6 +20,7 @@ import pydarnio as pydarn
 from loguru import logger
 
 import utils
+import copy
 
 class Gate(object):
     """Class object to hold each range cell value"""
@@ -246,15 +247,16 @@ class FetchData(object):
         """
         Convert the scan data into dataframe
         """
-        _o = dict(zip(s_params+v_params+["scnum"], ([] for _ in s_params+v_params+["scnum"])))
+        _o = dict(zip(s_params+v_params+["scnum","sbnum"], ([] for _ in s_params+v_params+["scnum","sbnum"])))
         for idn, s in enumerate(scans):
-            for b in s.beams:
+            for idh, b in enumerate(s.beams):
                 l = len(getattr(b, "slist"))
                 for p in v_params:
                     _o[p].extend(getattr(b, p))
                 for p in s_params:
                     _o[p].extend([getattr(b, p)]*l)
                 _o["scnum"].extend([idn + start_scnum]*l)
+                _o["sbnum"].extend([idh]*l)
             L = len(_o["slist"])
             for p in s_params+v_params:
                 if len(_o[p]) < L:
@@ -286,11 +288,25 @@ class FetchData(object):
         scans = []
         for sn in np.unique(df.scnum):
             o = df[df.scnum==sn]
-            beams = self.pandas_to_beams(o, s_params, v_params)
+            beams = []
+            for bn in np.unique(o.sbnum):
+                ox = o[o.sbnum==bn]
+                b = self.pandas_to_beams(ox, s_params, v_params)
+                beams.extend(b)
             sc = Scan(None, None, smode)
             sc.beams.extend(beams)
             sc.update_time()
             scans.append(sc)
+        mscans = []
+        if len(scans[0].beams) + len(scans[1].beams) == len(scans[2].beams):
+            sc = Scan(None, None, scans[0].s_mode)
+            sc.beams.extend(scans[0].beams)
+            sc.beams.extend(scans[1].beams)
+            sc.update_time()
+            mscans.append(sc)
+            for i in range(2,len(scans)):
+                mscans.append(scans[i])
+        scans = copy.copy(mscans)
         return scans
     
     def fetch_data(self, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "intt.sc", "intt.us",\

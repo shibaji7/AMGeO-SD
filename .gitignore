@@ -6,6 +6,7 @@ __pycache__/
 # output files
 data/outputs/
 data/*.csv
+data/*
 
 # C extensions
 *.so

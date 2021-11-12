@@ -59,6 +59,7 @@ class SDCarto(GeoAxes):
         """  Overlay AACGM coastlines and lakes  """
         kwargs["edgecolor"] = color
         kwargs["facecolor"] = "none"
+        kwargs["linewidth"] = 0.3
         # overaly coastlines
         feature = cartopy.feature.NaturalEarthFeature("physical", "coastline",
                 resolution, **kwargs)
@@ -70,6 +71,7 @@ class SDCarto(GeoAxes):
         # details!
         kwargs["edgecolor"] = color
         kwargs["facecolor"] = "none"
+        kwargs["linewidth"] = 0.3
         feature = cartopy.feature.NaturalEarthFeature("physical", "coastline",
                 resolution, **kwargs)
         return self.add_feature(feature, **kwargs)
@@ -121,7 +123,7 @@ class SDCarto(GeoAxes):
                      fontdict={"color":markerColor})
         return
     
-    def overlay_fov(self, rad=None, tx=cartopy.crs.PlateCarree(), maxGate=75, rangeLimits=None, beamLimits=None,
+    def overlay_fov(self, rad=None, tx=cartopy.crs.PlateCarree(), maxGate=100, rangeLimits=None, beamLimits=None,
             model="IS", fov_dir="front", fovColor=None, fovAlpha=0.2,
             fovObj=None, zorder=2, lineColor="k", lineWidth=1, ls="-"):
         """ Overlay radar FoV """
@@ -153,11 +155,13 @@ class SDCarto(GeoAxes):
         return
     
     def enum(self, add_date=True, add_coord=True, dtype=None):
-        if add_coord: self.text(0.01, 1.05, "Coords: %s"%self.coords, horizontalalignment="left",
-                                verticalalignment="center", transform=self.transAxes)
-        if dtype is not None: self.text(1.03, 0.1, dtype, ha="center", va="center", transform=self.transAxes, rotation=90)
+        if add_coord: self.text(-0.01, 0.99, "Coords: %s"%self.coords, horizontalalignment="center",
+                                verticalalignment="top", transform=self.transAxes, rotation=90, 
+                                fontdict={"weight":"bold"})
+        if dtype is not None: self.text(0.01, 1.05, dtype.upper(), ha="left", va="center", transform=self.transAxes, 
+                                        fontdict={"color":"r"})
         if add_date: self.text(0.99, 1.05, self.plot_date.strftime("%Y-%m-%d %H:%M") + " UT", horizontalalignment="right",
-                verticalalignment="center", transform=self.transAxes)
+                               verticalalignment="center", transform=self.transAxes, fontdict={"weight":"bold"})
         return
 
     def add_dn_terminator(self, **kwargs):
@@ -172,18 +176,21 @@ class SDCarto(GeoAxes):
         """
         Data scatter-plots
         """
+        df = df[df.slist<=self.maxGate]
         o = df[df[gflg_mask]==idx] if (idx is not None) and (gflg_mask is not None) else df.copy()
-        lons, lats = rf.lonFull, rf.latFull
-        Xb, Yg, Px = utils.get_gridded_parameters(o, xparam="bmnum", yparam="slist", zparam=p_name, rounding=True)
-        Xb, Yg = Xb.astype(int), Yg.astype(int)
-        lons, lats = lons[Xb.ravel(), Yg.ravel()].reshape(Xb.shape), lats[Xb.ravel(), Yg.ravel()].reshape(Xb.shape)
-        XYZ = to.transform_points(fm, lons, lats)
-        Px = np.ma.masked_invalid(Px)
-        return XYZ[:,:,0], XYZ[:,:,1], Px
+        if len(o) > 0:
+            lons, lats = rf.lonFull, rf.latFull
+            Xb, Yg, Px = utils.get_gridded_parameters(o, xparam="bmnum", yparam="slist", zparam=p_name, rounding=True)
+            Xb, Yg = Xb.astype(int), Yg.astype(int)
+            lons, lats = lons[Xb.ravel(), Yg.ravel()].reshape(Xb.shape), lats[Xb.ravel(), Yg.ravel()].reshape(Xb.shape)
+            XYZ = to.transform_points(fm, lons, lats)
+            Px = np.ma.masked_invalid(Px)
+            return XYZ[:,:,0], XYZ[:,:,1], Px
+        else: return [], [], []
 
     def overlay_radar_data(self, rad, df, to, fm, p_name = "v", 
                            p_max=100, p_min=-100, p_step=10, p_ub=9999, p_lb=-9999,
-                           cmap="Spectral", add_colorbar=True, colorbar_label="Velocity [m/s]", 
+                           cmap="jet", add_colorbar=True, colorbar_label="Velocity [m/s]", 
                            gflg_mask=None, **kwargs):
         """ 
             Adding radar data
@@ -195,9 +202,9 @@ class SDCarto(GeoAxes):
             -1: {"col": matplotlib.colors.ListedColormap(["0.2"]), "key":"us"},
             0: {"col": cmap, "key": None},
         }
-        nbeam = np.max(np.max(df.bmnum)) + 1
+        nbeam = df.bmnum.max() + 1
         if self.maxGate: nrange = self.maxGate
-        else: nrange = np.max(np.max(dat["slist"])) + 1
+        else: nrange = df.slist.max() + 1
         hdw = pydarn.read_hdw_file(rad)
         rf = rad_fov.CalcFov(hdw=hdw, ngates=nrange, nbeams=nbeam)
         
@@ -209,12 +216,26 @@ class SDCarto(GeoAxes):
             for key in gflg_map.keys():
                 cmap = gflg_map[key]["col"]
                 X, Y, Px = self.data_lay(df, rf, p_name, to, fm, idx=key, gflg_mask=gflg_mask)
-                self.pcolormesh(X, Y, Px.T, transform=to, cmap=cmap, vmax=p_max, vmin=p_min, **kwargs)
-                if add_colorbar and gflg_map[key]["key"] is None: self._add_colorbar(p_ranges, cmap, label=colorbar_label)
-                else: self._add_key_specific_colorbar(cmap, label=gflg_map[key]["key"], idh=key)
+                if len(X) > 0: 
+                    if gflg_map[key]["key"] is None: 
+                        norm = matplotlib.colors.BoundaryNorm(p_ranges, cmap.N)
+                        #self.pcolormesh(X, Y, Px.T, transform=to, cmap=cmap, norm=norm, vmax=p_max, vmin=p_min, lw=0.01, 
+                        #                edgecolors="None", **kwargs)
+                        self.scatter(X, Y, c=Px.T/np.nanmax(np.abs(Px)), transform=to, cmap=cmap, norm=norm, 
+                                     vmax=p_max, vmin=p_min, s=10, marker="D", **kwargs)
+                    else: 
+                        #self.pcolormesh(X, Y, Px.T, transform=to, cmap=cmap, vmax=p_max, vmin=p_min, lw=0.01, 
+                        #                edgecolors="None", **kwargs)
+                        self.scatter(X, Y, c=Px.T/np.nanmax(np.abs(Px)), transform=to, cmap=cmap, vmax=p_max, vmin=p_min,
+                                     s=10, marker="D", **kwargs)
+                if add_colorbar:
+                    if gflg_map[key]["key"] is None: self._add_colorbar(p_ranges, cmap, label=colorbar_label)
+                    else: self._add_key_specific_colorbar(cmap, label=gflg_map[key]["key"], idh=key)
         else:
+            norm = matplotlib.colors.BoundaryNorm(p_ranges, cmap.N)
             X, Y, Px = self.data_lay(df, rf, p_name, to, fm)
-            self.pcolormesh(X, Y, Px.T, transform=to, cmap=cmap, vmax=p_max, vmin=p_min, **kwargs)
+            self.pcolormesh(X, Y, Px.T, transform=to, cmap=cmap, norm=norm, vmax=p_max, vmin=p_min, lw=0.01, 
+                            edgecolors="None", **kwargs)
             if add_colorbar: self._add_colorbar(p_ranges, cmap, label=colorbar_label)
         return
     
@@ -222,7 +243,7 @@ class SDCarto(GeoAxes):
         """ Add a colorbar to the right of an axis. """
         pos = self.get_position()
         cpos = [pos.x1 + 0.035, pos.y0 + 0.4*pos.height,
-                0.015, pos.height * 0.5]            # this list defines (left, bottom, width, height)
+                0.01, pos.height * 0.5]            # this list defines (left, bottom, width, height)
         cax = matplotlib.pyplot.gcf().add_axes(cpos)
         norm = matplotlib.colors.BoundaryNorm(bounds[::2], colormap.N)
         cb2 = matplotlib.colorbar.ColorbarBase(cax, cmap=colormap,
@@ -240,8 +261,8 @@ class SDCarto(GeoAxes):
     def _add_key_specific_colorbar(self, colormap, label="gs", idh=1):
         """ Add a colorbar to the right of an axis. """
         pos = self.get_position()
-        cpos = [pos.x1 + 0.035, pos.y0 + ((idh-1)*.05+0.3)*pos.height,
-                0.015, 0.02]            # this list defines (left, bottom, width, height)
+        cpos = [pos.x1 + 0.035, pos.y0 + ((idh-1)*.1+0.3)*pos.height,
+                0.01, 0.02]            # this list defines (left, bottom, width, height)
         cax = matplotlib.pyplot.gcf().add_axes(cpos)
         cb2 = matplotlib.colorbar.ColorbarBase(cax, cmap=colormap,
                 spacing="uniform",

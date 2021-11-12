@@ -69,8 +69,6 @@ class FanPlots(object):
                                   map_projection = self.orthographic, plot_date=date,
                                   coords=self.coords)
         ax.coastlines()
-        ax.grid_on(draw_labels=[False, False, True, True])
-        ax.enum()
         return ax
     
     def plot_fov(self, df, date, rad, gflg_mask="gflg_ribiero", add_colorbar=True):
@@ -80,6 +78,23 @@ class FanPlots(object):
         ax.overlay_fov(rad)
         ax.overlay_radar_data(rad, df, self.orthographic, self.geodetic, gflg_mask=gflg_mask, 
                               add_colorbar=add_colorbar)
+        return ax
+    
+    def plot_layfovs(self, rads, date):
+        ax = self._add_axis(date)
+        for rad in rads:
+            ax.overlay_radar(rad)
+            ax.overlay_fov(rad)
+        return ax
+    
+    def add_instrument(self, ax, lat, lon, color="darkblue", marker="D", ms=40, name=""):
+        x, y = self.orthographic.transform_point(lon, lat, src_crs=self.geodetic)
+        ax.scatter(x, y, s=ms, color=color, marker=marker, transform=self.orthographic)
+        #ax.scatter(x, y, s=ms, ec=color, marker="o", fc=None, transform=self.orthographic)
+        lon, lat = lon+1, lat-1
+        x, y = self.orthographic.transform_point(lon, lat, src_crs=self.geodetic)
+        ax.text(x, y, name, ha="center", va="center", transform=self.orthographic,
+                  fontdict={"color":"darkgreen"})
         return
     
     def save(self, filepath):

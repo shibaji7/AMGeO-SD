@@ -846,7 +846,7 @@ class DBScan(object):
         for k in vars(args).keys():
             setattr(self, k, vars(args)[k])
         self.s_params = ["bmnum", "intt.sc", "intt.us", "mppul", "noise.sky", "nrang", "scan", "tfreq", "time"]
-        self.v_params = ["p_l", "v", "w_l", "slist"]
+        self.v_params = ["p_l", "v", "w_l", "slist", "gflg"]
         self.out_dir = utils.get_config("BASE_DIR") + self.sim_id + "/" + self.rad + "/"    
         self.scan_info = fetch_print_fit_rec(self.rad, self.start, self.start + dt.timedelta(minutes=5))
         self.io = FetchData( self.rad, [self.start, self.end], ftype=self.ftype, verbose=self.verbose)
@@ -878,22 +878,30 @@ class DBScan(object):
             ds = DBSCAN(eps=self.eps, min_samples=min_samples).fit(_o[["slist", "scnum"]].values)
             _o["cluster_tag"] = ds.labels_
             _o = utils._run_riberio_threshold_on_rad(_o)
-            self.plot_rti_images(_o, b)
+            #self.plot_rti_images(_o, b)
             o = pd.concat([o, _o])
         o = o.sort_values("time")
-        self.plot_fov_images(o, o.time.tolist()[0])
+        self.plot_fov_images(o, dt.datetime(2015,3,17,4,34))
         o["gflg_conv"], o["gflg_kde"] = o.gflg_ribiero, o.gflg_ribiero
         scans = self.io.pandas_to_scans(o, self.scan_info["s_mode"], self.s_params, self.v_params)
+        fov = utils.geolocate_radar_fov(self.rad, [s.stime for s in scans], azm=True)
+        ds = utils.to_xarray(scans, fov)
+        ds.to_netcdf(self.out_dir + "fitacf++_%s_%s_%s.nc"%(self.rad, self.start.strftime("%Y%m%d%H%M"),
+                                                            self.end.strftime("%Y%m%d%H%M")))
         return
     
     def plot_fov_images(self, o, dn):
-        fov = FanPlots(figsize=(10,5), nrows=1, ncols=2)
-        fov.plot_fov(o[(o.time>=dn) & (o.time < 
+        fov = FanPlots(figsize=(15,10), nrows=2, ncols=3)
+        ax = fov.plot_fov(o[(o.time>=dn) & (o.time < 
                                            dn + dt.timedelta(minutes=self.scan_info["s_time"]))], 
-                     dn, self.rad, gflg_mask=None, add_colorbar=False)
-        fov.plot_fov(o[(o.time>=dn) & (o.time < 
+                     dn, self.rad, gflg_mask="gflg", add_colorbar=False)
+        ax.grid_on(draw_labels=[False, False, True, True])
+        ax.enum(dtype=r"$fitacf$", add_date=False)
+        ax = fov.plot_fov(o[(o.time>=dn) & (o.time < 
                                            dn + dt.timedelta(minutes=self.scan_info["s_time"]))], 
                      dn, self.rad, gflg_mask="gflg_ribiero")
+        ax.grid_on(draw_labels=[False, False, False, False])
+        ax.enum(dtype=r"$fitacf^{++}$", add_coord=False)
         fov.save(self.out_dir + "%s_fov.png"%dn.strftime("%Y-%m-%d %H:%M"))
         fov.close()
         return
