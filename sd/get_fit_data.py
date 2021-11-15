@@ -175,7 +175,6 @@ class FetchData(object):
         if self.files is None: self.files = []
         reg_ex = self.regex
         days = (self.date_range[1] - self.date_range[0]).days + 2
-        ent = -1
         for d in range(-1,days):
             e = self.date_range[0] + dt.timedelta(days=d)
             fnames = glob.glob(reg_ex.format(year=e.year, rad=self.rad, ftype=self.ftype, date=e.strftime("%Y%m%d")))
@@ -183,11 +182,8 @@ class FetchData(object):
             for fname in fnames:
                 tm = fname.split(".")[1]
                 sc = fname.split(".")[2]
-                dus = dt.datetime.strptime(fname.split(".")[0].split("/")[-1] + tm + sc, "%Y%m%d%H%M%S")
-                due = dus + dt.timedelta(hours=2)
-                if (ent == -1) and (dus <= self.date_range[0] <= due): ent = 0
-                if ent == 0: self.files.append(fname)
-                if (ent == 0) and (dus <= self.date_range[1] <= due): ent = -1
+                d0 = dt.datetime.strptime(fname.split(".")[0].split("/")[-1] + tm + sc, "%Y%m%d%H%M%S")
+                if (self.date_range[0] <= d0) and (d0 <= self.date_range[1]): self.files.append(fname)
         return
     
     def _parse_data(self, data, s_params, v_params, by, scan_prop):
@@ -200,7 +196,7 @@ class FetchData(object):
                         {"s_mode": type of scan, "s_time": duration in min}
         """
         _b, _s = [], []
-        if self.verbose: logger.info("Started converting to beam data.")
+        if self.verbose: logger.info("Started converting to beam data %02d."%len(data))
         for d in data:
             time = dt.datetime(d["time.yr"], d["time.mo"], d["time.dy"], d["time.hr"], d["time.mt"], d["time.sc"], d["time.us"])
             if time >= self.date_range[0] and time <= self.date_range[1]:
@@ -242,7 +238,7 @@ class FetchData(object):
                 _o[p].extend([np.nan]*(L-l))
         return pd.DataFrame.from_records(_o)
     
-    def scans_to_pandas(self, scans, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time"],
+    def scans_to_pandas(self, scans, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time", "channel"],
             v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"], start_scnum=0):
         """
         Convert the scan data into dataframe

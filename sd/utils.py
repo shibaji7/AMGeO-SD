@@ -124,10 +124,11 @@ def get_config(key, section="amgeo"):
     val = config[section][key]
     return val
 
-def ribiero_gs_flg(vel, time):
+def ribiero_gs_flg(vel, time, vth):
+    #logger.info(" Velocity threshold: %.1f"%vth)
     L = np.abs(time[-1] - time[0]) * 24
-    high = np.sum(np.abs(vel) > 25.0)
-    low = np.sum(np.abs(vel) <= 25.0)
+    high = np.sum(np.abs(vel) > vth)
+    low = np.sum(np.abs(vel) <= vth)
     if low == 0: R = 1.0  # TODO hmm... this works right?
     else: R = high / low  # High vel / low vel ratio
     # See Figure 4 in Ribiero 2011
@@ -162,11 +163,11 @@ def _run_riberio_threshold(u, beam):
     for c in np.unique(clust_flag):
         clust_mask = c == clust_flag
         if c == -1: gs_flg[clust_mask] = -1
-        else: gs_flg[clust_mask] = ribiero_gs_flg(vel[clust_mask], t[clust_mask])
+        else: gs_flg[clust_mask] = ribiero_gs_flg(vel[clust_mask], t[clust_mask], vth=25.)
     df["ribiero_gflg"] = gs_flg
     return df
 
-def _run_riberio_threshold_on_rad(u, flag="gflg_ribiero"):
+def _run_riberio_threshold_on_rad(u, vth=25., flag="gflg_ribiero"):
     df = u.copy()
     clust_flag = np.array(df.cluster_tag)
     gs_flg = np.zeros_like(clust_flag)
@@ -177,7 +178,7 @@ def _run_riberio_threshold_on_rad(u, flag="gflg_ribiero"):
     for c in np.unique(clust_flag):
         clust_mask = c == clust_flag
         if c == -1: gs_flg[clust_mask] = -1
-        else: gs_flg[clust_mask] = ribiero_gs_flg(vel[clust_mask], t[clust_mask])
+        else: gs_flg[clust_mask] = ribiero_gs_flg(vel[clust_mask], t[clust_mask], vth)
     df[flag] = gs_flg
     return df
 
@@ -224,7 +225,7 @@ def geolocate_radar_fov(rad, scan_dates, height=300, azm=False, mag=False):
     o["scan_dates"] = [np.datetime64(d) for d in scan_dates]
     return o
 
-def to_xarray(scans, fov, bmax):
+def to_xarray(scans, fov, bmax, atrs={"description": ""}):
     """
     Convert data to Xarray
     """
@@ -234,6 +235,7 @@ def to_xarray(scans, fov, bmax):
         val = np.empty((fov["scans"].max()+1, bmax), dtype="datetime64[us]") if tm else\
                 np.zeros((fov["scans"].max()+1, bmax))*np.nan
         for i, s in enumerate(scans):
+            if tm: val[i,:] = [np.datetime64("nat")]*bmax
             for j, b in enumerate(s.beams):
                 val[i, j] = np.datetime64(getattr(b, key)) if tm else getattr(b, key)
         return val
@@ -251,7 +253,7 @@ def to_xarray(scans, fov, bmax):
         va[key] = (shape, val, atrs)
         return va
     
-    dv, cords, atrs = dict(), dict(), dict()
+    dv, cords = dict(), dict()
     # Setting coordinates
     cords = set_param(cords, "beams", "beams", fov["beams"], "Beam number", "1", "Radar beams")
     cords = set_param(cords, "sound", "sound", range(bmax), "Beam sound seq", "1", "Radar beam sound sequence")
@@ -298,6 +300,6 @@ def to_xarray(scans, fov, bmax):
     ds = xarray.Dataset(
         data_vars = dv,
         coords = cords,
-        attrs = {"description": ""}
+        attrs = atrs,
     )
     return ds

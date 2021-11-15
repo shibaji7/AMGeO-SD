@@ -8,19 +8,17 @@ dependencies:
   - _libgcc_mutex=0.1=main
   - blas=1.0=mkl
   - bokeh=2.2.3=py37hc8dfbb8_0
-  - bottleneck=1.3.2=py37h161383b_2
   - bzip2=1.0.8=h516909a_3
   - c-ares=1.16.1=h516909a_3
-  - ca-certificates=2021.5.30=ha878542_0
+  - ca-certificates=2021.10.8=ha878542_0
   - cartopy=0.18.0=py37hfca54e7_5
-  - certifi=2021.5.30=py37h89c1867_0
+  - certifi=2021.10.8=py37h89c1867_1
   - cftime=1.2.1=py37h161383b_1
   - click=7.1.2=pyh9f0ad1d_0
   - cloudpickle=1.6.0=py_0
   - curl=7.71.1=he644dc0_8
-  - cycler=0.10.0=py_2
+  - cycler=0.11.0=pyhd8ed1ab_0
   - cytoolz=0.11.0=py37h8f50634_1
-  - dask=2.30.0=py_0
   - dask-core=2.30.0=py_0
   - dbus=1.13.18=hb2f20db_0
   - distributed=2.30.1=py37h89c1867_0
@@ -44,12 +42,15 @@ dependencies:
   - krb5=1.17.1=hfafb76e_3
   - lcms2=2.11=h396b838_0
   - ld_impl_linux-64=2.33.1=h53a641e_7
+  - libblas=3.8.0=21_mkl
+  - libcblas=3.8.0=21_mkl
   - libcurl=7.71.1=hcdd3856_8
   - libedit=3.1.20191231=h14c3975_1
   - libev=4.33=h516909a_1
   - libffi=3.3=he6710b0_2
   - libgcc-ng=9.1.0=hdf63c60_0
   - libgfortran-ng=7.3.0=hdf63c60_0
+  - liblapack=3.8.0=21_mkl
   - libnetcdf=4.7.3=hb80b6cc_0
   - libnghttp2=1.41.0=h8cfc5f6_2
   - libpng=1.6.37=hbc83047_0
@@ -71,7 +72,6 @@ dependencies:
   - mkl_random=1.1.1=py37h0573a6f_0
   - msgpack-python=1.0.0=py37h99015e2_2
   - ncurses=6.2=he6710b0_1
-  - netcdf4=1.5.3=py37hbf33ddf_0
   - numpy-base=1.19.2=py37hfa32c7d_0
   - olefile=0.46=py37_0
   - openssl=1.1.1h=h516909a_0
@@ -95,7 +95,7 @@ dependencies:
   - qt=5.9.7=h5867ecd_1
   - readline=8.0=h7b6447c_0
   - retrying=1.3.3=py37_2
-  - scikit-learn=0.23.2=py37h0573a6f_0
+  - scikit-learn=0.20.3=py37ha8026db_1
   - setuptools=50.3.0=py37h06a4308_1
   - shapely=1.7.1=py37hedb1597_1
   - sip=4.19.8=py37hf484d3e_0
@@ -109,7 +109,6 @@ dependencies:
   - tornado=6.0.4=py37h7b6447c_1
   - typing_extensions=3.7.4.3=py_0
   - wheel=0.35.1=py_0
-  - xarray=0.16.1=py_0
   - xz=5.2.5=h7b6447c_0
   - yaml=0.2.5=h516909a_0
   - zict=2.0.0=py_0
@@ -123,6 +122,8 @@ dependencies:
     - descartes==1.1.0
     - ffnet==0.8.4
     - h5py==3.1.0
+    - importlib-metadata==4.8.2
+    - netcdf4==1.5.8
     - networkx==2.5
     - numexpr==2.7.1
     - numpy==1.19.4
@@ -134,3 +135,5 @@ dependencies:
     - scipy==1.5.4
     - spacepy==0.2.1
     - tables==3.6.1
+    - xarray==0.20.1
+    - zipp==3.6.0

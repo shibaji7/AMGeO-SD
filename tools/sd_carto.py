@@ -155,7 +155,7 @@ class SDCarto(GeoAxes):
         return
     
     def enum(self, add_date=True, add_coord=True, dtype=None):
-        if add_coord: self.text(-0.01, 0.99, "Coords: %s"%self.coords, horizontalalignment="center",
+        if add_coord: self.text(-0.02, 0.99, "Coords: %s"%self.coords, horizontalalignment="center",
                                 verticalalignment="top", transform=self.transAxes, rotation=90, 
                                 fontdict={"weight":"bold"})
         if dtype is not None: self.text(0.01, 1.05, dtype.upper(), ha="left", va="center", transform=self.transAxes, 
@@ -189,17 +189,17 @@ class SDCarto(GeoAxes):
         else: return [], [], []
 
     def overlay_radar_data(self, rad, df, to, fm, p_name = "v", 
-                           p_max=100, p_min=-100, p_step=10, p_ub=9999, p_lb=-9999,
-                           cmap="jet", add_colorbar=True, colorbar_label="Velocity [m/s]", 
-                           gflg_mask=None, **kwargs):
+                           p_max=30, p_min=-30, p_step=5, p_ub=999, p_lb=-999,
+                           cmap="jet_r", add_colorbar=True, colorbar_label="Velocity [m/s]", 
+                           gflg_mask=None, gflg_tag="c", **kwargs):
         """ 
             Adding radar data
             df: dataframe object
         """
-        cmap = matplotlib.pyplot.get_cmap("jet") if cmap is None else matplotlib.pyplot.get_cmap(cmap)
+        cmap = matplotlib.pyplot.get_cmap("jet_r") if cmap is None else matplotlib.pyplot.get_cmap(cmap)
         gflg_map={
-            1: {"col": matplotlib.colors.ListedColormap(["0.5"]), "key":"gs"},
-            -1: {"col": matplotlib.colors.ListedColormap(["0.2"]), "key":"us"},
+            1: {"col": matplotlib.colors.ListedColormap(["0.5"]), "key":"gs", "name":"gs"},
+            -1: {"col": matplotlib.colors.ListedColormap(["0.2"]), "key":"us", "name": r"$us_%s$"%gflg_tag},
             0: {"col": cmap, "key": None},
         }
         nbeam = df.bmnum.max() + 1
@@ -219,18 +219,14 @@ class SDCarto(GeoAxes):
                 if len(X) > 0: 
                     if gflg_map[key]["key"] is None: 
                         norm = matplotlib.colors.BoundaryNorm(p_ranges, cmap.N)
-                        #self.pcolormesh(X, Y, Px.T, transform=to, cmap=cmap, norm=norm, vmax=p_max, vmin=p_min, lw=0.01, 
-                        #                edgecolors="None", **kwargs)
-                        self.scatter(X, Y, c=Px.T/np.nanmax(np.abs(Px)), transform=to, cmap=cmap, norm=norm, 
+                        self.scatter(X, Y, c=Px.T, transform=to, cmap=cmap, norm=norm,
                                      vmax=p_max, vmin=p_min, s=10, marker="D", **kwargs)
                     else: 
-                        #self.pcolormesh(X, Y, Px.T, transform=to, cmap=cmap, vmax=p_max, vmin=p_min, lw=0.01, 
-                        #                edgecolors="None", **kwargs)
-                        self.scatter(X, Y, c=Px.T/np.nanmax(np.abs(Px)), transform=to, cmap=cmap, vmax=p_max, vmin=p_min,
+                        self.scatter(X, Y, c=Px.T, transform=to, cmap=cmap, vmax=p_max, vmin=p_min,
                                      s=10, marker="D", **kwargs)
                 if add_colorbar:
                     if gflg_map[key]["key"] is None: self._add_colorbar(p_ranges, cmap, label=colorbar_label)
-                    else: self._add_key_specific_colorbar(cmap, label=gflg_map[key]["key"], idh=key)
+                    else: self._add_key_specific_colorbar(cmap, label=gflg_map[key]["name"], idh=key)
         else:
             norm = matplotlib.colors.BoundaryNorm(p_ranges, cmap.N)
             X, Y, Px = self.data_lay(df, rf, p_name, to, fm)
