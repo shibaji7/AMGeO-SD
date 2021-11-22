@@ -80,7 +80,7 @@ class Filter(object):
                 if hasattr(bm, "slist") and len(getattr(bm, "slist")) > 0:
                     oscan.beams.append(bm)
                     bmnums.append(bm.bmnum)
-        oscan.update_time()
+        if len(oscan.beams) > 0: oscan.update_time()
         oscan.beams = sorted(oscan.beams, key=lambda bm: bm.bmnum)
         return oscan
 
@@ -102,92 +102,95 @@ class Filter(object):
         else: scans = i_scans
         
         self.scans = scans
-        w, pbnd, pth, kde_plot_point = self.w, self.pbnd, self.pth, self.kde_plot_point
-        oscan = Scan(scans[1].stime, scans[1].etime, scans[1].s_mode)
-        if w is None: w = np.array([[[1,2,1],[2,3,2],[1,2,1]],
-                                [[2,3,2],[3,5,3],[2,3,2]],
-                                [[1,2,1],[2,3,2],[1,2,1]]])
-        l_bmnum, r_bmnum = scans[1].beams[0].bmnum, scans[1].beams[-1].bmnum
-    
-        for b in scans[1].beams:
-            bmnum = b.bmnum
-            beam = Beam()
-            beam.copy(b)
-    
-            for key in beam.__dict__.keys():
-                if type(getattr(beam, key)) == np.ndarray: setattr(beam, key, [])
+        if len(scans) == 3:
+            w, pbnd, pth, kde_plot_point = self.w, self.pbnd, self.pth, self.kde_plot_point
+            oscan = Scan(scans[1].stime, scans[1].etime, scans[1].s_mode)
+            if w is None: w = np.array([[[1,2,1],[2,3,2],[1,2,1]],
+                                    [[2,3,2],[3,5,3],[2,3,2]],
+                                    [[1,2,1],[2,3,2],[1,2,1]]])
+            l_bmnum, r_bmnum = scans[1].beams[0].bmnum, scans[1].beams[-1].bmnum
 
-            setattr(beam, "v_mad", [])
-            setattr(beam, "gflg_conv", [])
-            setattr(beam, "gflg_kde", [])
-    
-            for r in range(0,b.nrang):
-                box = [[[None for j in range(3)] for k in range(3)] for n in range(3)]
-    
-                for j in range(0,3):# iterate through time
-                    for k in range(-1,2):# iterate through beam
-                        for n in range(-1,2):# iterate through gate
-                            # get the scan we are working on
-                            s = scans[j]
-                            if s == None: continue
-                            # get the beam we are working on
-                            if s == None: continue
-                            # get the beam we are working on
-                            tbm = None
-                            for bm in s.beams:
-                                if bm.bmnum == bmnum + k: tbm = bm
-                            if tbm == None: continue
-                            # check if target gate number is in the beam
-                            if r+n in tbm.slist:
-                                ind = np.array(tbm.slist).tolist().index(r + n)
-                                box[j][k+1][n+1] = Gate(tbm, ind, gflg_type=gflg_type)
-                            else: box[j][k+1][n+1] = 0
-                pts = 0.0
-                tot = 0.0
-                v,w_l,p_l,gfx = list(), list(), list(), list()
-        
-                for j in range(0,3):# iterate through time
-                    for k in range(0,3):# iterate through beam
-                        for n in range(0,3):# iterate through gate
-                            bx = box[j][k][n]
-                            if bx == None: continue
-                            wt = w[j][k][n]
-                            tot += wt
-                            if bx != 0:
-                                pts += wt
-                                for m in range(0, wt):
-                                    v.append(bx.v)
-                                    w_l.append(bx.w_l)
-                                    p_l.append(bx.p_l)
-                                    gfx.append(bx.gflg)
-                if pts / tot >= self.thresh:# check if we meet the threshold
-                    beam.slist.append(r)
-                    beam.v.append(np.median(v))
-                    beam.w_l.append(np.median(w_l))
-                    beam.p_l.append(np.median(p_l))
-                    beam.v_mad.append(np.median(np.abs(np.array(v)-np.median(v))))
-                    
-                    # Re-evaluate the groundscatter flag using old method
-                    gflg = 0 if np.median(w_l) > -3.0 * np.median(v) + 90.0 else 1
-                    beam.gflg.append(gflg)
-                    
-                    # Re-evaluate the groundscatter flag using weight function
-                    #if bmnum == 12: print(bmnum,"-",r,":(0,1)->",len(gfx)-np.count_nonzero(gfx),np.count_nonzero(gfx),np.nansum(gfx) / tot)
-                    gflg = self.get_conv_gflg(gfx, tot, pbnd)
-                    beam.gflg_conv.append(gflg)
-    
-                    # KDE estimation using scipy Beta(a, b, loc=0, scale=1)
-                    gflg = self.get_kde_gflg(gfx, pbnd, pth)
-                    beam.gflg_kde.append(gflg)
-            oscan.beams.append(beam)
-        
-        ###
-        # Do clusteing analysis scan by scan after the filtering
-        ###
-        if do_cluster: oscan = self.run_scan_cluster(oscan)
-        else: oscan.beams = [setattr(b, "clabel", [-999]*len(b.slist)) for b in oscan.beams]
-        oscan.update_time()
-        sorted(oscan.beams, key=lambda bm: bm.bmnum)
+            for b in scans[1].beams:
+                bmnum = b.bmnum
+                beam = Beam()
+                beam.copy(b)
+
+                for key in beam.__dict__.keys():
+                    if type(getattr(beam, key)) == np.ndarray: setattr(beam, key, [])
+
+                setattr(beam, "v_mad", [])
+                setattr(beam, "gflg_conv", [])
+                setattr(beam, "gflg_kde", [])
+
+                for r in range(0,b.nrang):
+                    box = [[[None for j in range(3)] for k in range(3)] for n in range(3)]
+
+                    for j in range(0,3):# iterate through time
+                        for k in range(-1,2):# iterate through beam
+                            for n in range(-1,2):# iterate through gate
+                                # get the scan we are working on
+                                s = scans[j]
+                                if s == None: continue
+                                # get the beam we are working on
+                                if s == None: continue
+                                # get the beam we are working on
+                                tbm = None
+                                for bm in s.beams:
+                                    if bm.bmnum == bmnum + k: tbm = bm
+                                if tbm == None: continue
+                                # check if target gate number is in the beam
+                                if r+n in tbm.slist:
+                                    ind = np.array(tbm.slist).tolist().index(r + n)
+                                    box[j][k+1][n+1] = Gate(tbm, ind, gflg_type=gflg_type)
+                                else: box[j][k+1][n+1] = 0
+                    pts = 0.0
+                    tot = 0.0
+                    v,w_l,p_l,gfx = list(), list(), list(), list()
+
+                    for j in range(0,3):# iterate through time
+                        for k in range(0,3):# iterate through beam
+                            for n in range(0,3):# iterate through gate
+                                bx = box[j][k][n]
+                                if bx == None: continue
+                                wt = w[j][k][n]
+                                tot += wt
+                                if bx != 0:
+                                    pts += wt
+                                    for m in range(0, wt):
+                                        v.append(bx.v)
+                                        w_l.append(bx.w_l)
+                                        p_l.append(bx.p_l)
+                                        gfx.append(bx.gflg)
+                    if pts / tot >= self.thresh:# check if we meet the threshold
+                        beam.slist.append(r)
+                        beam.v.append(np.median(v))
+                        beam.w_l.append(np.median(w_l))
+                        beam.p_l.append(np.median(p_l))
+                        beam.v_mad.append(np.median(np.abs(np.array(v)-np.median(v))))
+
+                        # Re-evaluate the groundscatter flag using old method
+                        gflg = 0 if np.median(w_l) > -3.0 * np.median(v) + 90.0 else 1
+                        beam.gflg.append(gflg)
+
+                        # Re-evaluate the groundscatter flag using weight function
+                        #if bmnum == 12: print(bmnum,"-",r,":(0,1)->",len(gfx)-np.count_nonzero(gfx),np.count_nonzero(gfx),np.nansum(gfx) / tot)
+                        gflg = self.get_conv_gflg(gfx, tot, pbnd)
+                        beam.gflg_conv.append(gflg)
+
+                        # KDE estimation using scipy Beta(a, b, loc=0, scale=1)
+                        gflg = self.get_kde_gflg(gfx, pbnd, pth)
+                        beam.gflg_kde.append(gflg)
+                oscan.beams.append(beam)
+
+            ###
+            # Do clusteing analysis scan by scan after the filtering
+            ###
+            if do_cluster: oscan = self.run_scan_cluster(oscan)
+            else: oscan.beams = [setattr(b, "clabel", [-999]*len(b.slist)) for b in oscan.beams]
+            if len(oscan.beams) > 0:
+                oscan.update_time()
+                sorted(oscan.beams, key=lambda bm: bm.bmnum)
+        else: oscan = Scan(None, None, "")
         return oscan
     
     def run_scan_cluster(self, oscan, eps=2, min_samples=5):
@@ -196,8 +199,10 @@ class Filter(object):
         v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e", "v_mad", "gflg_kde", "gflg_conv"]
         io = FetchData(None, None)
         o = io.scans_to_pandas([oscan], s_params, v_params)
-        ds = DBSCAN(eps=eps, min_samples=min_samples).fit(o[["bmnum", "slist"]].values)
-        o["labels"] = ds.labels_
+        if len(o) > 0: 
+            ds = DBSCAN(eps=eps, min_samples=min_samples).fit(o[["bmnum", "slist"]].values)
+            o["labels"] = ds.labels_
+        else: o["labels"] = []
         _b, ox = [], o.groupby(["bmnum"])
         for _, x in ox:
             m = x[s_params+v_params+["labels"]]

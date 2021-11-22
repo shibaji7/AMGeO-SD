@@ -183,7 +183,11 @@ class FetchData(object):
                 tm = fname.split(".")[1]
                 sc = fname.split(".")[2]
                 d0 = dt.datetime.strptime(fname.split(".")[0].split("/")[-1] + tm + sc, "%Y%m%d%H%M%S")
+                d1 = d0 + dt.timedelta(hours=2)
                 if (self.date_range[0] <= d0) and (d0 <= self.date_range[1]): self.files.append(fname)
+                elif (d0 <= self.date_range[0] <=d1): self.files.append(fname)
+        self.files = list(set(self.files))
+        self.files.sort()
         return
     
     def _parse_data(self, data, s_params, v_params, by, scan_prop):
@@ -243,7 +247,8 @@ class FetchData(object):
         """
         Convert the scan data into dataframe
         """
-        _o = dict(zip(s_params+v_params+["scnum","sbnum"], ([] for _ in s_params+v_params+["scnum","sbnum"])))
+        new_cols = ["scnum","sbnum"]
+        _o = dict(zip(s_params+v_params+new_cols, ([] for _ in s_params+v_params+new_cols)))
         for idn, s in enumerate(scans):
             for idh, b in enumerate(s.beams):
                 l = len(getattr(b, "slist"))
@@ -254,7 +259,7 @@ class FetchData(object):
                 _o["scnum"].extend([idn + start_scnum]*l)
                 _o["sbnum"].extend([idh]*l)
             L = len(_o["slist"])
-            for p in s_params+v_params:
+            for p in s_params+v_params+new_cols:
                 if len(_o[p]) < L:
                     l = len(_o[p])
                     _o[p].extend([np.nan]*(L-l))

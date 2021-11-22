@@ -71,9 +71,9 @@ def run_fitacf_amgeo_simulation(rad, start, end, gflg_cast, _dict_):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--rad", default="sas", help="SuperDARN radar code (default sas)")
-    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,17,3), help="Start date (default 2015-03-17T03)", 
+    parser.add_argument("-s", "--start", default=dt.datetime(2015,3,17), help="Start date (default 2015-03-17T03)", 
             type=prs.parse)
-    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,17,3,2), help="End date (default 2015-03-17T03:02)", 
+    parser.add_argument("-e", "--end", default=dt.datetime(2015,3,18), help="End date (default 2015-03-17T03:02)", 
             type=prs.parse)
     parser.add_argument("-f", "--dofilter", action="store_false", help="Do filtering (default True)")
     parser.add_argument("-sv", "--save", action="store_false", help="Save data to file (defult True)")

@@ -15,6 +15,7 @@ __status__ = "Research"
 import datetime
 import sys
 sys.path.append("sd/")
+import numpy as np
 # SD libs
 import pydarn
 import rad_fov
@@ -147,10 +148,11 @@ class PrintFitRec(object):
 
         def _estimate_scan_duration(dx):
             """ Calculate scan durations in minutes """
-            dx = dx[dx.scan==1]
-            #dx = dx[dx.bmnum==dx.bmnum.tolist()[1]]
-            sdur = (dx.time.tolist()[-1].to_pydatetime() - dx.time.tolist()[-2].to_pydatetime()).total_seconds()
-            return int( (sdur+10)/60. )
+            sdur = []
+            for channel in np.unique(dx.channel):
+                d = dx[(dx.scan==1) & (dx.channel==channel)]
+                sdur.append((d.time.tolist()[-1].to_pydatetime() - d.time.tolist()[-2].to_pydatetime()).total_seconds())
+            return int( (np.max(sdur)+10)/60. )
 
         def _estimate_themis_beam(sdur, dx):
             """ Estimate themis mode and beam number if any """

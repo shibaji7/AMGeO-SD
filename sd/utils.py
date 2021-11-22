@@ -225,7 +225,11 @@ def geolocate_radar_fov(rad, scan_dates, height=300, azm=False, mag=False):
     o["scan_dates"] = [np.datetime64(d) for d in scan_dates]
     return o
 
-def to_xarray(scans, fov, bmax, atrs={"description": ""}):
+def to_xarray(scans, fov, bmax, atrs={"description": ""},
+              newkeys=[{"key":"gflg_ribiero", 
+                        "long_name":"Modified ground scatter flag",
+                        "desc":"Ground scatter flag\
+                        (determined using method described in clustering method) (0/1)"}]):
     """
     Convert data to Xarray
     """
@@ -238,6 +242,7 @@ def to_xarray(scans, fov, bmax, atrs={"description": ""}):
             if tm: val[i,:] = [np.datetime64("nat")]*bmax
             for j, b in enumerate(s.beams):
                 val[i, j] = np.datetime64(getattr(b, key)) if tm else getattr(b, key)
+        if not tm: val = np.ma.masked_equal(val, np.nan)
         return val
     
     def fetch_2D_param(key):
@@ -245,6 +250,13 @@ def to_xarray(scans, fov, bmax, atrs={"description": ""}):
         for i, s in enumerate(scans):
             for j, b in enumerate(s.beams):
                 val[i, j, np.array(getattr(b, "slist")).astype(int)] = getattr(b, key)
+        val = np.ma.masked_equal(val, np.nan)
+        return val
+    
+    def fetch_time_coords(key):
+        val = np.empty((fov["scans"].max()+1), dtype="datetime64[us]")
+        for i, s in enumerate(scans):
+            val[i] = np.datetime64(getattr(s, key))
         return val
     
     def set_param(va, key, shape, val, lname="", u="", dsc=""):
@@ -259,6 +271,8 @@ def to_xarray(scans, fov, bmax, atrs={"description": ""}):
     cords = set_param(cords, "sound", "sound", range(bmax), "Beam sound seq", "1", "Radar beam sound sequence")
     cords = set_param(cords, "gates", "gates", fov["gates"], "Gate number", "1", "Range gate")
     cords = set_param(cords, "scan_num", "scan_num", fov["scans"], "Scan number", "1", "Number of scan")
+    cords = set_param(cords, "scan_stime", "scan_stime", fetch_time_coords("stime"), "Scan start time", None, "Scan start time")
+    cords = set_param(cords, "scan_etime", "scan_etime", fetch_time_coords("etime"), "Scan end time", None, "Scan end time")
     # Setting 1D variables
     dv = set_param(dv, "gdlat", ["beams", "gates"], fov["glat"], "Latitude", "degree", "Geographic Latitudes at each range cell")
     dv = set_param(dv, "gdlon", ["beams", "gates"], fov["glon"], "Longitude", "degree", "Geographic Latitudes at each range cell")
@@ -292,11 +306,11 @@ def to_xarray(scans, fov, bmax, atrs={"description": ""}):
                    "dB", "Backscatter power")
     dv = set_param(dv, "p_l", ["scan_num", "sound", "gates"], fetch_2D_param("p_l"), "Power", 
                    "dB", "Backscatter power")
-    dv = set_param(dv, "gflg", ["scan_num", "sound", "gates"], fetch_2D_param("gflg").astype(bool), "Ground scatter flag", 
+    dv = set_param(dv, "gflg", ["scan_num", "sound", "gates"], fetch_2D_param("gflg"), "Ground scatter flag", 
                    "bool", "Ground scatter flag (determined using method described in fitacf method) (0/1)")
-    dv = set_param(dv, "gflg_ribiero", ["scan_num", "sound", "gates"], fetch_2D_param("gflg_ribiero").astype(bool), 
-                   "Modified ground scatter flag", "bool", 
-                   "Ground scatter flag (determined using method described in clustering method) (0/1)")
+    for nk in newkeys:
+        dv = set_param(dv, nk["key"], ["scan_num", "sound", "gates"], fetch_2D_param(nk["key"]), 
+                       nk["long_name"], "", nk["desc"])
     ds = xarray.Dataset(
         data_vars = dv,
         coords = cords,
