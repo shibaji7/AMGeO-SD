@@ -26,7 +26,8 @@ import json
 from matplotlib.dates import date2num
 import xarray
 
-from get_fit_data import Scan
+#from get_fit_data import Scan
+
 
 def smooth(x, window_len=51, window="hanning"):
     if x.ndim != 1: raise ValueError("smooth only accepts 1 dimension arrays.")

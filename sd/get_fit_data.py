@@ -223,7 +223,7 @@ class FetchData(object):
             if self.verbose: logger.info("Converted to scan data.")
         return _b, _s
     
-    def convert_to_pandas(self, beams, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time"],
+    def convert_to_pandas(self, beams, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time", "rsep", "frang"],
             v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"]):
         """
         Convert the beam data into dataframe
@@ -242,7 +242,7 @@ class FetchData(object):
                 _o[p].extend([np.nan]*(L-l))
         return pd.DataFrame.from_records(_o)
     
-    def scans_to_pandas(self, scans, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time", "channel"],
+    def scans_to_pandas(self, scans, s_params=["bmnum", "noise.sky", "tfreq", "scan", "nrang", "time"],
             v_params=["v", "w_l", "gflg", "p_l", "slist", "v_e"], start_scnum=0):
         """
         Convert the scan data into dataframe

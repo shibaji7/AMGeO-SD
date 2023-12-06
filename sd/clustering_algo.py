@@ -952,7 +952,7 @@ class DBScan(object):
                 self.plot_rti_images(_o, b)
                 o = pd.concat([o, _o])
         o = o.sort_values("time")
-        #self.plot_fov_images(o, [dt.datetime(2015,3,17,4,34), dt.datetime(2015,3,17,4,36), dt.datetime(2015,3,17,4,38)])
+        self.plot_fov_images(o, [dt.datetime(2015,3,17,4,34), dt.datetime(2015,3,17,4,36), dt.datetime(2015,3,17,4,38)])
         o["gflg_conv"], o["gflg_kde"] = o.gflg_ribiero, o.gflg_ribiero
         if self.save:
             scans, bmax = self.io.pandas_to_scans(o, self.scan_info["s_mode"], self.s_params, self.v_params)
