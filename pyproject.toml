@@ -28,6 +28,9 @@ dependencies = [
     "pysolar",
 ]
 
+[project.scripts]
+amgeo-sd = "amgeo_sd.cli:main"
+
 [project.optional-dependencies]
 plots = ["cartopy", "shapely"]
 dev = ["pytest", "pytest-cov"]

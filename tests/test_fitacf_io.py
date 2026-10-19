@@ -184,3 +184,29 @@ def test_real_reader_window(fitacf_files):
     reader = FitacfReader("any", t0, t0 + dt.timedelta(minutes=30), files=[fitacf_files[0]])
     got = reader.beams()
     assert got and all(t0 <= b.time <= t0 + dt.timedelta(minutes=30) for b in got)
+
+
+@pytest.mark.realdata
+def test_real_full_day_scans_are_complete(fitacf_files):
+    """Every radar-day in tests/data: scans have a constant beam count and unique beam numbers."""
+    from collections import defaultdict
+
+    by_dir = defaultdict(list)
+    for f in fitacf_files:
+        by_dir[f.parent].append(f)
+    for files in by_dir.values():
+        reader = FitacfReader("any", dt.datetime(2000, 1, 1), dt.datetime(2100, 1, 1), files=files)
+        scans = reader.scans()
+        sizes = {len(s.beams) for s in scans}
+        assert len(sizes) == 1, f"{files[0].parent.name}: uneven scan sizes {sizes}"
+        assert all(len({b.bmnum for b in s.beams}) == len(s.beams) for s in scans)
+        assert all((s.etime - s.stime).total_seconds() < 180 for s in scans)
+
+
+@pytest.mark.realdata
+def test_cli_info(fitacf_files, capsys):
+    from amgeo_sd.cli import main
+
+    assert main(["info", str(fitacf_files[0].parent)]) == 0
+    out = capsys.readouterr().out
+    assert "scans" in out and "echoes" in out

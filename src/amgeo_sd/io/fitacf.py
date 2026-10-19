@@ -268,7 +268,7 @@ class FitacfReader:
         """All beams in the window, time-ordered."""
         beams: list[Beam] = []
         for f in self.files:
-            logger.info(f"reading {f}")
+            logger.debug(f"reading {f}")
             beams.extend(records_to_beams(read_fitacf_file(f), self.start, self.end))
         beams.sort(key=lambda b: b.time)
         return beams

@@ -132,3 +132,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Real SuperDARN test data (large, redistribution governed by the SuperDARN data policy): keep out of git
+tests/data/*
+!tests/data/.gitkeep
+!tests/data/README.md
+*.zip
