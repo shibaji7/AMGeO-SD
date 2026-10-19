@@ -14,10 +14,12 @@ dependencies:
   - pytables
   - loguru
   - pyyaml
+  - python-dateutil
   - cartopy
   - shapely
   - pytest
   - pytest-cov
+  - ruff
   - pip
   - pip:
       - pydarn>=4.3

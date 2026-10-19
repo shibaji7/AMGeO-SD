@@ -1,83 +1,65 @@
-# Porting map: legacy `_bkp/` -> `amgeo_sd`
+# Porting: what is left
 
-Legacy code is frozen in [`_bkp/`](../_bkp/README.md). Every legacy feature gets a new home, a
-`make` target, and a test on the real data in `tests/data` (bks = mid-latitude, gbr = high-latitude,
-2025-02-08). Status: **done**, **todo**.
+Legacy code is frozen in [`_bkp/`](../_bkp/README.md). This file lists only the legacy features that have **no
+replacement yet**; everything already ported is documented in [USAGE.md](USAGE.md) and the module docstrings.
+Every remaining item gets a new home under `src/amgeo_sd/`, a `make` target where it is a workflow, a TOML
+section, and a test on the real data in `tests/data` (bks = mid-latitude, gbr = high-latitude, 2025-02-08).
 
-## 1. Data model and I/O
+## 1. Clustering models (the two other fitacf++ workflows)
 
-| Legacy | New | Status |
+| Legacy | New home | Notes |
 |---|---|---|
-| `sd/get_fit_data.py` `Gate`, `Beam`, `Scan` | `amgeo_sd/models.py` (`Beam`, `Scan` dataclasses; `Gate` dropped, was only used inside the median filter) | done |
-| `FetchData` (file glob, `fetch_data`, `convert_to_pandas`, `scans_to_pandas`) | `amgeo_sd/io/fitacf.py` (`FitacfReader`, `find_fitacf_files`, `beams_to_dataframe`, `scans_to_dataframe`) | done |
-| `FetchData.pandas_to_beams`, `pandas_to_scans` (DataFrame back to scans; merges the first two scans when `len(s0)+len(s1)==len(s2)`) | `io/fitacf.py` `dataframe_to_scans` | todo |
-| `tools/fit_records.py` `PrintFitRec.beam_summary` (scan period, themis beam, `s_mode`) | `io/summary.py` `scan_info()`; `make data-info` already prints the basics | todo |
-| `PrintFitRec.print_fit_record` (text dump with geo/mag coordinates) | `io/summary.py` `write_fit_record()` | todo |
-| `config/conf.ini` (`SD_DATA`, `BASE_DIR`, figure limits), `utils.get_config` | `$AMGEO_SD_DATA` / `--root` for input; output dir as an argument (`OUT`) | partly (input done) |
-| `config/radar.csv`, `utils.get_radar` | `amgeo_sd/data/radars.csv` + `radars.get_radar()` | todo |
+| `sd/clustering_algo.py` `BeamGateTimeFilter`, `BeamGateFilter`, `ScatterTypeDetection` (+ `fitacf_amgeo_cluster.py`): beam-gate DBSCAN per 30-min window, KDE ionospheric/ground classification, cluster tracking in time | `clustering/beam_gate.py`, `clustering/scatter_type.py` -> `make cluster` | needs `utils.smooth` (fix the `numpy.ones` / `eval` bug) |
+| `sd/clustering_algo.py` `DBScan` (+ `fitacf_amgeo_dbcluster.py`): per-beam DBSCAN (+ optional Box-Cox GMM) in (gate, scan) space | `clustering/dbscan.py` -> `make dbscan` | `-gmm`, `-nc`, `-cov`, `-gth`, `-tb_mult` options |
+| `utils.ribiero_gs_flg`, `_run_riberio_threshold`, `_run_riberio_threshold_on_rad` | `scatter.py` | Ribiero et al. (2011) cluster rule -> `cluster_tag`, `gflg_ribiero` |
+| `Beam.gs_estimation` (Sundeen / Blanchard 2009 criteria) | `scatter.py` | |
+| `BeamGateTimeFilter.repackage_to_netcdf`, `save_data`, per-cluster `.h5`, `beam_gate_clusters.csv`, `beam_gate_time_tracker.json` | `export.py` additions | the median model's `.nc` / `.fitacf.pl.bz2` writers already accept `cluster_tag`, `gflg_ribiero` |
+| `analysis.py` `Simulate` options not yet exposed | - | none left; kept here only to flag that `-gct` / `-gft` (flag-type selection) were dropped on purpose |
 
-## 2. Geometry (davitpy-derived)
+Each clustering model gets its own TOML table (like `[median]`), a `params.toml` in the output folder, and
+`.nc` + `.fitacf.pl.bz2` outputs through the existing writers.
 
-| Legacy | New | Notes |
-|---|---|---|
-| `tools/geoPack.py` | `amgeo_sd/geo/geopack.py` | port as-is, then compare with pydarn/aacgmv2 results |
-| `tools/rad_fov.py` `CalcFov` | `amgeo_sd/geo/fov.py` | needs `pydarn.read_hdw_file(abbrv, date)` (signature changed in pydarn 4) |
-| `tools/model_vheight.py` | `amgeo_sd/geo/vheight.py` | |
-| `utils.geolocate_radar_fov`, `fitacf_geopos.py` | `geo/fov.py` + `make geopos` | |
-| `clustering_algo.get_mean_sza` | `geo/sun.py` | pysolar 0.13 |
+## 2. Plotting tools that depend on the clustering models
 
-## 3. Algorithms
+The RTI and field-of-view plots (all three legacy RTI classes and both fan classes merged) are done. These legacy
+plot tools consume cluster records and still need porting under `src/amgeo_sd/plotting/`:
 
-| Legacy | New | Status |
-|---|---|---|
-| `sd/boxcar_filter.py` `Filter` (3x3x3 weighted median, conv/KDE ground-scatter flags, per-scan DBSCAN) | `amgeo_sd/filters/median.py` | todo |
-| `sd/analysis.py` `Simulate` (+ `fitacf_amgeo.py`) | `amgeo_sd/pipelines/median_filter.py` -> `make median` | todo |
-| `clustering_algo.BeamGateTimeFilter`, `BeamGateFilter`, `ScatterTypeDetection` (+ `fitacf_amgeo_cluster.py`) | `amgeo_sd/clustering/beam_gate.py`, `scatter_type.py` -> `make cluster` | todo |
-| `clustering_algo.DBScan` (GMM + DBSCAN, Ribiero threshold) (+ `fitacf_amgeo_dbcluster.py`) | `amgeo_sd/clustering/dbscan.py` -> `make dbscan` | todo |
-| `utils.ribiero_gs_flg`, `_run_riberio_threshold*`, `smooth`, `get_gridded_parameters` | `amgeo_sd/scatter.py`, `amgeo_sd/grid.py` | todo |
-| `Beam.gs_estimation` (Sundeen / Blanchard criteria) | `amgeo_sd/scatter.py` | todo |
-
-## 4. Output
-
-| Legacy | New |
+| Legacy | New home |
 |---|---|
-| `utils.to_xarray`, `Simulate.to_netcdf`, `BeamGateTimeFilter.repackage_to_netcdf`, `save_cmd` | `amgeo_sd/export.py` (xarray -> NetCDF4, params.json, script.cmd) |
-| `utils.build_base_folder_structure`, `os.system("mkdir/gzip/rm -rf")` | `pathlib` + `gzip` module |
+| `sd/plotlib.py`: `InvestigativePlots`, `MovieMaker` (+ `.avi` via OpenCV) | `plotting/investigate.py`, `plotting/movie.py` |
+| `sd/plotlib.py`: `to_midlatitude_gate_summary`, `beam_gate_boundary_tracker`, `beam_gate_boundary_plots`, `cluster_stats`, `general_stats`, `individal_cluster_stats`, `rand_jitter` | `plotting/cluster_stats.py` |
+| `sd/scan_cluster_plots.py`: `MasterPlotter`, `ClusterScanMap` (scan scatter maps with size / colour legends, quivers) | `plotting/scan_map.py` |
+| `sd/plot_processed_data.py` `PlotProcessedData`; `fitacf_plots.py` (re-plot a finished run from its parameter file) | `pipelines/plot_outputs.py`: with `params.toml` instead of `params.json` |
+| `fitacf_utils.py` `plot_rti` over `.nc.gz` outputs | covered by `make plot-rti`; add reading of gzipped `.nc` |
+| `SuperDARN_3D_Scatter_Volume_Plots.ipynb`, `fitacf_polar.py` (velocity histogram by range) | `examples/` |
 
-## 5. Plotting (four overlapping copies today)
+## 3. Smaller pieces
 
-`get_cluster_cmap` exists 4x, RTI plot classes 3x (`plotlib`, `fan_rti`, `sd_plots`, plus `rti.py`),
-`MasterPlotter` 2x, `FanPlots` 2x. Merge into one `amgeo_sd/plotting/` package:
-
-| Legacy | New |
+| Legacy | New home |
 |---|---|
-| `sd/fan_rti.py`, `sd/plotlib.py` (`FanPlots`, `RangeTimeIntervalPlot`, `FoV`) , `sd/sd_plots.py`, `rti.py` | `plotting/rti.py`, `plotting/fan.py` -> `make plot-rti`, `make plot-fov` |
-| `tools/sd_carto.py` `SDCarto` (needs `descartes`, unmaintained) | `plotting/carto.py`, patches via matplotlib/shapely directly |
-| `sd/scan_cluster_plots.py`, `plotlib.InvestigativePlots`, `MovieMaker`, beam-gate/cluster statistics plots | `plotting/cluster.py`, `plotting/movie.py` (`cv2` only for the movie) |
-| `sd/plot_processed_data.py`, `fitacf_plots.py`, `fitacf_utils.py` | `pipelines/plot_outputs.py` |
-| `fitacf_polar.py` (velocity histogram by range), `SuperDARN_3D_Scatter_Volume_Plots.ipynb` | `examples/` |
+| `FetchData.pandas_to_beams`, `pandas_to_scans` (DataFrame back to scans; merges the first two scans when `len(s0)+len(s1)==len(s2)`) | `io/fitacf.py` `dataframe_to_scans` |
+| `PrintFitRec.print_fit_record` (text dump of every record with geographic and AACGM coordinates) | `io/summary.py` `write_fit_record` |
+| `fitacf_geopos.py`: AACGM latitude/longitude and azimuth of every range cell at a given time | `geo/radar.py` -> `make geopos` |
+| `clustering_algo.get_mean_sza` (solar zenith angle of a cell, pysolar) | `geo/sun.py` |
+| `config/radar.csv`, `utils.get_radar` (mid / high latitude radar type) | `amgeo_sd/data/radars.csv` + `radars.get_radar()` |
+| `extra_codes/bs_analysis.py` (sub-auroral backscatter study, needs `spacepy`) | `examples/` if still wanted |
+| `utils.get_gridded_parameters` | replaced by `plotting/grid.py`; delete from the list once the clustering plots are ported |
 
-## 6. Dropped / archive only
+## 4. Verification still open
 
-| Legacy | Why |
-|---|---|
-| `extra_codes/geoloc.py` | needs davitpy on Python 2.7; replaced by `geo/fov.py` |
-| `extra_codes/job.py`, `simulate.py` | import `Process2Movie` / `printFitRec`, which do not exist in `analysis.py`; the new CLI covers them |
-| `extra_codes/bs_analysis.py` | SAIS backscatter study using `spacepy`; port later to `examples/` if still wanted |
-| `amgeo.yml` | py3.7 lock file; replaced by `environment.yml` |
+* **fitacf 3.0** is read by the same code as fitacf 2.5 (tested with synthetic fitacf 2.0 / 2.5 / 3.0 records), but
+  there is no fitacf3 file in `tests/data`; add one radar-day to test it on real data.
+* **Reference outputs.** The median model is checked against a literal translation of the legacy loops and the
+  geometry against arrays produced by the legacy code (`tests/golden`). For the clustering models, run the legacy
+  pipeline once in a Python 3.7 environment built from `_bkp/amgeo.yml` on the bks / gbr test days, store its
+  `.nc` outputs as golden files and compare stage by stage. This needs the old environment.
+* **Archive layout.** `AMGEO_SD_DATA` lookups assume `<year>/<ftype>/<rad>/<YYYYMMDD>.*`; untested against a real archive.
 
-## 7. Known defects to fix while porting
+## 5. Defects in the legacy code that the port must not carry over
 
-* `utils.smooth`: `numpy.ones` (undefined name) and `eval()` for the window.
+* `utils.smooth`: undefined `numpy.ones`, window chosen with `eval()`.
 * `BeamGateFilter.doFilter`: `DataFrame.append` (removed in pandas 2); `stats.median_absolute_deviation` (removed in SciPy 1.9; use `median_abs_deviation`).
-* `get_gridded_parameters`: positional `pivot(x, y)` is keyword-only in pandas 2.
-* `rti.py` runs the whole analysis at import time; `fitacf_amgeo_dbcluster` hard-codes 2015-03-17 FoV times.
-* Shell-outs (`os.system("mkdir -p")`, `gzip`, `rm -rf {out_dir}*`) and cwd-relative paths.
-* `plt.style.use(["science", "ieee"])` needs SciencePlots (not installed).
-* `datetime.utcfromtimestamp` (deprecated), `ColorbarBase`, `descartes`.
-
-## 8. Keeping behaviour identical
-
-To prove the port preserves results, run the **legacy** pipeline once on the test radar-days in a
-py3.7 env built from `_bkp/amgeo.yml` and save its NetCDF/CSV outputs as golden files; each ported
-stage is then compared against them. This needs the old env; see the open question in the hand-off.
+* `rti.py` runs its whole analysis at import time; `fitacf_amgeo_dbcluster` hard-codes 2015-03-17 FoV times.
+* Shell-outs (`os.system("mkdir -p")`, `gzip`, `rm -rf {out_dir}*`) and cwd-relative paths in the clustering code.
+* `plt.style.use(["science", "ieee"])` needs SciencePlots (not installed); `descartes` is unmaintained.
+* `sd_carto.get_aacgm_geom` was never defined, so AACGM coastlines never worked; the new FoV plot converts them itself.

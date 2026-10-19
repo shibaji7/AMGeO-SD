@@ -9,8 +9,29 @@ PYTEST    := $(RUN) python -m pytest
 # Radar-day folders under tests/data (one folder per radar/day; `archives/` is skipped).
 DATA ?= $(filter-out %archives/,$(wildcard tests/data/*/))
 
+# Pipeline parameters (override on the command line, e.g. `make median RAD=gbr START=... END=...`).
+CONFIG ?=
+RAD    ?=
+START  ?=
+END    ?=
+INPUT  ?=
+OUT    ?=
+SID    ?=
+JOBS   ?=
+THRESH ?=
+PTH    ?=
+LTH    ?=
+UTH    ?=
+EXTRA  ?=
+COMPARE ?=
+BEAM   ?=
+TIME   ?=
+PARAMS ?=
+COORDS ?=
+FIGDIR ?=
+
 .DEFAULT_GOAL := help
-.PHONY: help env env-update env-remove install data-unpack data-info data-clean test test-unit test-real test-cov clean
+.PHONY: help env env-update env-remove install data-unpack data-info data-clean median median-demo out-clean plot-rti plot-fov plot-demo config-show lint format test test-unit test-real test-cov clean
 
 ##@ Help
 help: ## Show this help
@@ -47,7 +68,45 @@ data-clean: ## Delete unpacked tests/data/<name>/ folders that can be restored f
 	  else echo "kept $$d (no tests/data/archives/$${n}_fitacf.zip to restore it from)"; fi; \
 	done
 
+##@ Pipelines
+median: ## fitacf -> fitacf++ (.nc + .fitacf.pl.bz2). CONFIG=file.toml and/or RAD START END [INPUT OUT SID JOBS THRESH PTH LTH UTH EXTRA]
+	@test -n "$(CONFIG)" -o \( -n "$(RAD)" -a -n "$(START)" -a -n "$(END)" \) || { echo "usage: make median CONFIG=configs/median_bks_demo.toml   or   make median RAD=bks START=2025-02-08T03:00 END=2025-02-08T04:00 INPUT=tests/data/bks_20250208"; exit 2; }
+	$(PY) -m amgeo_sd median $(if $(CONFIG),-c $(CONFIG)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(if $(INPUT),-i $(INPUT)) $(if $(OUT),-o $(OUT)) $(if $(SID),-sid $(SID)) $(if $(JOBS),-j $(JOBS)) $(if $(THRESH),-th $(THRESH)) $(if $(PTH),-pth $(PTH)) $(if $(LTH),-lth $(LTH)) $(if $(UTH),-uth $(UTH)) $(EXTRA)
+
+median-demo: ## Run `median` from configs/median_{bks,gbr}_demo.toml (1 h each, tests/data) into data/outputs/demo/
+	$(MAKE) --no-print-directory median CONFIG=configs/median_bks_demo.toml
+	$(MAKE) --no-print-directory median CONFIG=configs/median_gbr_demo.toml
+
+config-show: ## Print the resolved median parameters (CONFIG=... plus overrides) without running
+	$(PY) -m amgeo_sd median --print-config $(if $(CONFIG),-c $(CONFIG)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(EXTRA)
+
+out-clean: ## Delete pipeline results in OUT (default data/outputs)
+	@o="$(if $(OUT),$(OUT),data/outputs)"; case "$$o" in /|.|..) echo "refusing to remove '$$o'"; exit 2;; esac; rm -rf "$$o"
+
+PLOT_FLAGS = $(if $(CONFIG),-c $(CONFIG)) $(if $(INPUT),-i $(INPUT)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(if $(PARAMS),-p $(PARAMS)) $(if $(FIGDIR),-o $(FIGDIR)) $(EXTRA)
+
+plot-rti: ## RTI of one beam from fitacf or fitacf++ files. CONFIG=file.toml and/or INPUT BEAM [COMPARE START END PARAMS FIGDIR EXTRA]
+	@test -n "$(CONFIG)" -o -n "$(INPUT)" || { echo "usage: make plot-rti INPUT=data/outputs/demo/bks/x.fitacf++.nc BEAM=12 [COMPARE=raw_dir PARAMS='v gflg' START=... END=...]   or   CONFIG=configs/plot_rti_demo.toml"; exit 2; }
+	$(PY) -m amgeo_sd plot rti $(PLOT_FLAGS) $(if $(BEAM),-b $(BEAM)) $(if $(COMPARE),--compare $(COMPARE))
+
+plot-fov: ## Field-of-view map of one scan from fitacf or fitacf++ files. CONFIG=file.toml and/or INPUT TIME [PARAMS COORDS RAD FIGDIR EXTRA]
+	@test -n "$(CONFIG)" -o -n "$(INPUT)" || { echo "usage: make plot-fov INPUT=tests/data/bks_20250208 TIME=2025-02-08T03:30 [PARAMS='v gflg_conv' COORDS=aacgmv2]   or   CONFIG=configs/plot_fov_demo.toml"; exit 2; }
+	$(PY) -m amgeo_sd plot fov $(PLOT_FLAGS) $(if $(TIME),-t $(TIME)) $(if $(COORDS),--coords $(COORDS))
+
+plot-demo: median-demo ## Run the demo filter, then draw RTI + FoV figures (raw vs fitacf++) for bks and gbr into data/figures/demo/
+	$(MAKE) --no-print-directory plot-rti CONFIG=configs/plot_rti_demo.toml
+	$(MAKE) --no-print-directory plot-fov CONFIG=configs/plot_fov_demo.toml
+	$(MAKE) --no-print-directory plot-rti INPUT=tests/data/gbr_20250208 COMPARE=data/outputs/demo/gbr/gbr_202502080300_202502080400.fitacf++.nc BEAM=7 START=2025-02-08T03:00 END=2025-02-08T04:00 PARAMS=v FIGDIR=data/figures/demo EXTRA="--name rti_gbr_b07_raw_vs_fitacfpp"
+	$(MAKE) --no-print-directory plot-fov INPUT=tests/data/gbr_20250208 TIME=2025-02-08T03:05 PARAMS="v gflg" START=2025-02-08T03:00 END=2025-02-08T03:10 FIGDIR=data/figures/demo EXTRA="--name fov_gbr_0305_raw"
+
 ##@ Quality
+lint: ## Static checks (ruff): errors, unused code, import order, missing docstrings
+	$(RUN) ruff check src tests
+
+format: ## Format the code with ruff (the ported legacy geometry modules are excluded)
+	$(RUN) ruff format src tests
+	$(RUN) ruff check --fix src tests
+
 test: ## Run the whole test suite (real-data tests skip if tests/data is empty)
 	$(PYTEST) -q
 

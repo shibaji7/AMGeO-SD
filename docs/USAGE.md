@@ -1,90 +1,140 @@
 # Using amgeo_sd
 
-Two parts: what works **today** (the fitacf reader), and what the **original code did** and how each
-piece will be reproduced (see [PORTING.md](PORTING.md) for status per function).
+Everything is driven from `make` (run `make help`), from the TOML parameter files in `configs/`, or from Python.
+What is not ported yet is listed in [PORTING.md](PORTING.md).
 
-## 1. What works today
+## 1. Make targets
 
-### Make targets
+| Target | What it does |
+|---|---|
+| `make env` / `env-update` / `env-remove` / `install` | conda env `amgeo` (Python 3.12) from `environment.yml`; editable install of the package |
+| `make data-unpack` / `data-info` / `data-clean` | unzip `tests/data/archives/*.zip`; summarise beams / scans / echoes per radar-day; delete unpacked folders that can be restored |
+| `make median` / `median-demo` | median-filter model: fitacf -> fitacf++ (`.nc` and `.fitacf.pl.bz2`) |
+| `make plot-rti` / `plot-fov` / `plot-demo` | RTI and field-of-view figures from fitacf or fitacf++ files |
+| `make config-show` | print the resolved median parameters without running |
+| `make test` / `test-unit` / `test-real` / `test-cov` | test suite (real-data tests skip when `tests/data` is empty) |
+| `make lint` / `format` | ruff checks / formatting |
+| `make out-clean` / `clean` | delete pipeline results (`OUT`, default `data/outputs`) / caches and build files |
 
-```bash
-make help         # list all targets with descriptions
-make env          # create conda env "amgeo" (python 3.12) + install the package
-make data-unpack  # unzip tests/data/archives/*.zip -> tests/data/<radar>_<date>/
-make data-info    # beams / scans / echoes for every radar-day folder (or DATA="dir1 dir2")
-make test         # all tests;  test-unit = in-memory only;  test-real = real bks/gbr files
-make test-cov     # coverage report
-make clean        # caches, coverage, build files
-make data-clean   # delete unpacked data folders (only those restorable from archives/)
+Variables (`CONFIG RAD START END INPUT OUT SID JOBS THRESH PTH LTH UTH EXTRA COMPARE BEAM TIME PARAMS COORDS FIGDIR`) are
+passed as `make median RAD=bks START=2025-02-08T03:00 ...`; anything else goes in `EXTRA="--no-kde"`.
+
+## 2. Parameters: TOML files
+
+Precedence: built-in defaults < TOML file < command-line / make variables. Unknown keys are errors.
+[`configs/default.toml`](../configs/default.toml) lists **every** parameter with its default and a comment:
+
+```toml
+[run]     rad, start, end, sim_id, out, jobs
+[input]   paths, root, ftype
+[median]  thresh, pth, lth, uth, kde, cluster, eps, min_samples
+[output]  netcdf, fitacf
+[plot]    inputs, compare, rad, beam, start, end, time, params, flag, coords, projection, max_gate, terminator, out, name, format, dpi
 ```
 
-### Python API
+Every run writes an **annotated `params.toml`** (all parameters with comments, plus `[provenance]` and `[result]`) and
+`script.cmd` next to its outputs. `params.toml` is itself a valid config: `make median CONFIG=<run>/params.toml` repeats the run.
+`make config-show CONFIG=... JOBS=8` shows what a combination resolves to.
+
+## 3. Median-filter model (fitacf -> fitacf++)
+
+```bash
+make median CONFIG=configs/median_bks_demo.toml                      # 1 h of bks from tests/data
+make median RAD=gbr START=2025-02-08T03:00 END=2025-02-08T04:00 INPUT=tests/data/gbr_20250208 JOBS=4
+make median CONFIG=configs/median_gbr_demo.toml EXTRA="--no-kde"   # skip the slow Beta fit
+```
+
+Input: fitacf 2.0 / 2.5 / 3.0 files (`.bz2`, `.gz` or plain), given as files/directories (`INPUT`, `[input] paths`) or looked up in
+an archive `<root>/<year>/<ftype>/<rad>/<YYYYMMDD>.*` (`[input] root` or `$AMGEO_SD_DATA`).
+
+Algorithm (`amgeo_sd.filters.MedianFilter`): for every cell of the middle one of three consecutive scans, the 27 neighbours
+(scan -1..+1, beam -1..+1, gate -1..+1) are weighted by `[[1,2,1],[2,3,2],[1,2,1]] / [[2,3,2],[3,5,3],[2,3,2]] / ...`. The cell
+survives if occupied-neighbour weight / existing-neighbour weight >= `thresh`; survivors get weighted medians of `v w_l p_l`, `v_mad`
+and the flags
+
+| variable | meaning |
+|---|---|
+| `gflg` | 0 ionospheric if median `w_l > -3 v + 90`, else 1 ground |
+| `gflg_conv` | weighted fraction of ground-scatter neighbours: <= `lth` 0, >= `uth` 1, else 2 (undetermined) |
+| `gflg_kde` | Beta-distribution fit of the neighbour flags, `1 - cdf(pth)` mapped like `gflg_conv` |
+| `clabel` | per-scan DBSCAN label in (beam, gate) space, -1 = noise |
+
+Speed: about 0.15 ms per echo with KDE; an hour of bks takes ~10 s.
+
+### Output files (in `<out>/<sim_id>/<rad>/`)
+
+| file | content |
+|---|---|
+| `<rad>_<start>_<end>.fitacf++.nc` | NetCDF4: `gdlat gdlon gdazm` (beams x gates); per beam `bmnum noise.sky tfreq scan nrang frang rsep time mppul intt.us intt.sc` (scan_num x sound); per echo `v w_l p_l gflg gflg_conv gflg_kde v_mad clabel` (scan_num x sound x gates, NaN = no echo) |
+| `<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pl.bz2` | fitacf++ as DMAP, one record per surviving beam (see below) |
+| `params.toml`, `script.cmd` | annotated parameters and the command line |
+
+**`.fitacf.pl.bz2`**: a bz2 DMAP stream. Each record is the original fitacf record (all standard fields: header values, `pwr0`,
+`ltab`, ...) with `slist v w_l p_l gflg` replaced by the filtered values and `v_e` NaN. Other per-echo fitacf arrays (`qflg`, `p_s`, `elv`, ...)
+keep their value where the gate had an echo and are NaN / 0 where the filter added a cell. Added arrays: `v_mad`, `gflg_conv`, `gflg_kde`
+(-1 = not computed), `clabel`; strings `amgeo.model`, `amgeo.version`; `origin.command` / `origin.time` record the processing.
+The scan flag is re-set on the first kept beam of every scan. Because of the extra fields, `pydarnio.read_fitacf` rejects these files;
+read them with `amgeo_sd.io.read_fitacf_file` (falls back to generic DMAP) or `pydarnio.read_dmap`. The raw-data archive lookup (`root`) skips `*.fitacf.pl.bz2`, so filtered and raw data are never mixed; the loaders accept them when given explicitly or by directory.
+
+### Differences from the legacy output
+
+* scans with start time in `[start, end]` are written; the legacy run emitted the neighbouring scans and left the last two as empty placeholders;
+* the KDE jitter uses a seeded generator per scan (reproducible, independent of `jobs`); a failed Beta fit gives 2 instead of an exception;
+* filtered beams with no surviving echo are dropped (as after the legacy DBSCAN regrouping); `v_e` is NaN;
+* `clabel` is also written; `scan_stime` / `scan_etime` are coordinates of `scan_num` rather than separate dimensions; `frang`, `rsep` are stored;
+* the scan period is the median spacing of all scan-start beams (the legacy code differenced the last two starts among beams with echoes);
+* range-cell geometry uses the data's `frang` / `rsep` (legacy: always 180 / 45 km; identical for bks and gbr);
+* the radar geometry is the legacy `CalcFov` (standard virtual-height model), which differs by 20-25 km from pydarn 4's fixed-300 km field of view.
+
+## 4. Plots (fitacf and fitacf++)
+
+All plots read any supported input through `amgeo_sd.io.load_frame`: raw fitacf 2.0 / 2.5 / 3.0, `*.fitacf.pl.bz2`, or `*.fitacf++.nc`
+(files or directories), and produce the same echo table, so a raw and a filtered dataset can be drawn identically.
+
+```bash
+make plot-rti INPUT=tests/data/bks_20250208 COMPARE=data/outputs/demo/bks/bks_202502080300_202502080400.fitacf++.nc \
+     BEAM=12 START=2025-02-08T03:00 END=2025-02-08T04:00 PARAMS=v          # raw above, fitacf++ below (+ gflg panels)
+make plot-rti INPUT=data/outputs/demo/bks/*.fitacf++.nc BEAM=12 PARAMS="v w_l p_l gflg gflg_conv v_mad"
+make plot-fov INPUT=data/outputs/demo/bks/20250208.0300.00.bks.fitacf.pl.bz2 TIME=2025-02-08T03:30 PARAMS="v gflg_conv" COORDS=aacgmv2
+make plot-demo                                                              # runs the demo filter, then all of the above
+```
+
+* **RTI** (`plot rti`): one panel per parameter for one beam. Numeric: `v w_l p_l v_mad` (or `[plot]` ranges via the API); flags: `gflg gflg_conv gflg_kde gflg_ribiero`
+  (IS red, GS blue, US black, undetermined green); `cluster_tag`. With `compare`, the same beam of each input is stacked on identical axes and colour scale.
+* **FoV** (`plot fov`): the scan nearest `time`, each echo drawn as its range cell on a cartopy map; ground scatter (`gflg == 1`) is gray, flag
+  parameters use the IS / GS classes. `coords` is `geo` or `aacgmv2` (cells, radar and coastlines are converted; 300 km for data, 0 km for coastlines).
+  `projection` is `auto` (orthographic around the field of view, polar stereographic above 70 deg), `polar` or `ortho`.
+* Figures go to `data/figures/` (`FIGDIR`); `[plot] format` is `png`, `pdf` or `svg`.
+
+Python:
 
 ```python
 import datetime as dt
-from amgeo_sd.io import FitacfReader, scans_to_dataframe
+from amgeo_sd.io import load_frame
+from amgeo_sd.plotting import plot_rti, plot_rti_compare, plot_fan
 
-# explicit files ...
-reader = FitacfReader("bks", dt.datetime(2025, 2, 8, 3), dt.datetime(2025, 2, 8, 4),
-                      files=["tests/data/bks_20250208/20250208.0200.00.bks.a.fitacf.bz2"])
-# ... or archive lookup: root=<dir> or $AMGEO_SD_DATA, laid out <year>/<ftype>/<rad>/<YYYYMMDD>.*
-beams = reader.beams()          # list[amgeo_sd.models.Beam], time ordered
-scans = reader.scans()          # list[amgeo_sd.models.Scan] grouped by the scan flag
-df = scans_to_dataframe(scans)  # one row per echo; columns time, bmnum, slist, v, v_e, w_l, p_l, gflg, scnum, sbnum, ...
+raw, _ = load_frame(["tests/data/bks_20250208"], dt.datetime(2025, 2, 8, 3), dt.datetime(2025, 2, 8, 4))
+pp, meta = load_frame(["data/outputs/demo/bks/bks_202502080300_202502080400.fitacf++.nc"])
+plot_rti_compare({"fitacf 2.5": raw, "fitacf++": pp}, beam=12, param="v", path="rti.png", rad="bks", flag="gflg")
+plot_fan(pp, "bks", dt.datetime(2025, 2, 8, 3, 30), params=("v", "gflg_conv"), path="fan.png")
 ```
 
-* A `Beam` holds one sounding (header values as attributes, per-echo numpy arrays `slist v v_e w_l p_l gflg`,
-  and an `extra` dict for arrays that later algorithms add, e.g. `v_mad`, cluster labels).
-* A `Scan` holds the beams of one sweep plus `stime`, `etime`, mean `freq`/`nsky`.
-* `.bz2`, `.gz` and plain files are all read; corrupt trailing records are dropped with a warning.
-* Column names differ from the legacy ones where a dot was awkward: `noise.sky -> noise_sky`,
-  `intt.sc -> intt_sc`, `intt.us -> intt_us`.
+Legacy -> new names: `RangeTimeIntervalPlot.addParamPlot / addCluster / addGSIS` -> `add_param / add_clusters / add_gsis`;
+`FanPlots.plot_fov / plot_layfovs / add_instrument` are unchanged; the `sdcarto` GeoAxes class is replaced by functions inside `FanPlots`.
 
-## 2. The original workflows (not yet ported)
+## 5. Python API
 
-All three start from fitacf files and end with an xarray/NetCDF4 `*.fitacf++.nc` file under
-`data/outputs/<sim_id>/<rad>/` together with `params.json` and `script.cmd` (the exact command line).
-Outputs add flags to the fitacf variables `v w_l p_l gflg` and geolocation (`gdlat gdlon gdazm`).
+```python
+from amgeo_sd.io import FitacfReader, load_scans, scans_to_dataframe, write_fitacfpp, scans_to_records
+from amgeo_sd.filters import MedianFilter
+from amgeo_sd.geo import radar_fov
+from amgeo_sd.pipelines import run_median_filter, run_plot
+from amgeo_sd.config import load_settings
+```
 
-### A. Median-filter model (`fitacf_amgeo.py`, `Simulate`, `Filter`)
-
-1. `fit_records.beam_summary`: scan period, themis beam, scan mode from the first minutes of data.
-2. Load scans, drop repeated beams, slide a 3-scan x 3-beam x 3-gate **weighted median** (weights
-   `[[1,2,1],[2,3,2],[1,2,1]] / [[2,3,2],[3,5,3],[2,3,2]] / ...`); a gate survives if the weight of occupied
-   cells / total weight >= `thresh` (default 0.7).
-3. Per surviving gate: median `v`, `w_l`, `p_l`, `v_mad`, and three ground-scatter flags:
-   `gflg` (ionospheric if median `w_l > -3 v + 90`, else ground), `gflg_conv` (weighted fraction of GS neighbours vs. `lth`/`uth`,
-   2 = undecided) and `gflg_kde` (beta-distribution fit, cut at `pth`).
-4. Per-scan DBSCAN on (beam, gate) gives `clabel`; save `.nc`.
-
-Options: `-r -s -e -th -pth -lth -uth -gct -sid -ftype`. Planned: `make median RAD=bks START=... END=...`.
-
-### B. Beam-gate-time clustering for mid-latitude radars (`fitacf_amgeo_cluster.py`, `BeamGateTimeFilter`)
-
-1. Cut the period into `dur`-minute windows (default 30); in each, run model A, then per beam a DBSCAN
-   over range gates to find scatter bands (`eps`, `min_samples`), smooth/merge them across beams and
-   classify each band as ionospheric / ground scatter with a KDE-based probability (`ScatterTypeDetection`).
-2. Track the resulting beam-gate boxes from window to window (`beam_gate_time_tracker.json`).
-3. For every tracked cluster apply the Ribiero et al. (2011) rule (velocity threshold 25 m/s, duration-dependent
-   high/low-velocity ratio) -> `cluster_tag`, `ribiero_gflg`; write per-cluster `.h5` and the merged `.nc`.
-4. Diagnostic figures per window (`beamgate/figs/...`) and an optional `.avi` movie.
-
-### C. Scan-by-scan DBSCAN/GMM (`fitacf_amgeo_dbcluster.py`, `DBScan`)
-
-For each channel and beam, cluster echoes in (range gate / `eps_g`, scan number / `eps_s`) with DBSCAN
-(`eps`, `min_samples`; `min_samples x tb_mult` on the themis beam), optionally after a Gaussian-mixture split
-on Box-Cox-transformed velocity (`-gmm bmnum|T|A`, `-nc`, `-cov`, `-gth`), then apply the Ribiero rule
-(`-vth`) -> `gflg_ribiero`. Writes RTI and fan-plot images and the `.nc`.
-
-### Plots (`fitacf_plots.py`, `fitacf_utils.py`, `sd/*plot*.py`, `rti.py`)
-
-* **RTI** (range-time-intensity, one beam): velocity, cluster labels, GS/IS flag.
-* **Fan / FoV maps** (cartopy, geographic or AACGM): echoes coloured by velocity with a GS mask, radar FoV, terminator.
-* **Cluster scan maps**, beam-gate boundary / cluster statistics, and `.avi` movies.
-* `fitacf_utils.py -o rti|fov` plots from stored `.nc.gz` outputs; `fitacf_plots.py` re-plots from `params.json`.
-
-### Planned make interface
-
-`make median`, `make cluster`, `make dbscan`, `make plot-rti`, `make plot-fov`, `make geopos`,
-each taking `RAD START END SID OUT` and the algorithm parameters above; added as each stage is ported and
-verified against the legacy outputs.
+* `FitacfReader(rad, start, end, files=... | root=...)`: `.records()` (raw dicts), `.beams()`, `.scans()`. `load_scans` / `load_frame` accept any supported file.
+* `Beam` (one sounding: header attributes, per-echo arrays `slist v v_e w_l p_l gflg`, `extra` dict, `fit_version`) and `Scan` live in `amgeo_sd.models`.
+* `MedianFilter(...).filter_scans(scans, n_jobs=4)` returns the filtered scans (each interior scan once).
+* `radar_fov("bks", date)` returns cell-corner `glat glon gazm`; `hardware("bks", date)` the pydarn hardware record.
+* `load_settings(path, overrides)` builds the validated `Settings`; `dump_settings_toml` writes the annotated TOML.
+* Column names where a dot was awkward: `noise.sky -> noise_sky`, `intt.sc -> intt_sc`, `intt.us -> intt_us` (NetCDF keeps the dotted names).

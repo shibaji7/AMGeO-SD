@@ -1,0 +1,53 @@
+# Every parameter of the median-filter model with its default value.
+# Copy this file, delete what you do not change, and run:
+#     make median CONFIG=configs/my_run.toml
+# Command-line values (make RAD=..., EXTRA="--no-kde") override the file.
+
+[run]
+rad    = "bks"                    # three-letter radar code (required)
+start  = 2025-02-08T03:00:00      # UT, scans starting in [start, end] are written (required)
+end    = 2025-02-08T04:00:00      # UT (required)
+sim_id = "L100"                   # run id: results go to <out>/<sim_id>/<rad>/
+out    = "data/outputs"           # output base directory
+jobs   = 1                        # worker processes for the filter
+
+[input]
+paths = []                        # fitacf files or directories (fitacf 2.0/2.5/3.0, .bz2/.gz/plain);
+                                  # empty = look in the archive below
+root  = ""                        # archive root laid out <year>/<ftype>/<rad>/; empty = $AMGEO_SD_DATA
+ftype = "fitacf"                  # "fitacf" or "fitacf3" (archive lookup only)
+
+[median]
+thresh      = 0.7                 # min fraction of the 3x3x3 neighbour weight that must hold an echo
+pth         = 0.25                # Beta-distribution cut for the KDE ground-scatter flag
+lth         = 0.2                 # P(ground) <= lth  -> ionospheric (0)
+uth         = 0.8                 # P(ground) >= uth  -> ground (1); in between -> undetermined (2)
+kde         = true                # compute gflg_kde (the slow Beta fit); false -> NaN
+cluster     = true                # DBSCAN labels per scan -> clabel
+eps         = 2.0                   # DBSCAN radius in (beam, gate) units
+min_samples = 5                   # DBSCAN core-point size
+
+[output]
+netcdf = true                     # <rad>_<start>_<end>.fitacf++.nc
+fitacf = true                     # <YYYYMMDD.HHMM.SS>.<rad>.fitacf.pl.bz2 (DMAP with extra fields)
+
+# ---------------------------------------------------------------------------------------------
+# Figures: `make plot-rti CONFIG=...` / `make plot-fov CONFIG=...` read this table.
+[plot]
+inputs     = []                   # fitacf / fitacf++ files or directories (.nc, .fitacf.pl.bz2, .fitacf[.bz2|.gz])
+compare    = []                   # RTI: more inputs stacked below the first one
+rad        = ""                   # radar code; empty = from the files
+beam       = 0                    # RTI beam number
+# start    = 2025-02-08T03:00:00  # only data from here (optional, UT)
+# end      = 2025-02-08T04:00:00  # only data up to here (optional, UT)
+# time     = 2025-02-08T03:30:00  # FoV: map of the scan nearest to this time
+params     = ["v", "w_l", "p_l", "gflg"]   # v w_l p_l v_mad | gflg gflg_conv gflg_kde gflg_ribiero | cluster_tag
+flag       = "gflg"               # RTI compare: classification panel for each dataset; "" = none
+coords     = "geo"                # FoV: "geo" or "aacgmv2"
+projection = "auto"               # FoV: "auto", "polar" or "ortho"
+max_gate   = 0                    # FoV: gates drawn; 0 = all in the data
+terminator = false                # FoV: shade the night side (geo only)
+out        = "data/figures"       # output directory
+name       = ""                   # file name without extension; empty = generated
+format     = "png"                # png, pdf or svg
+dpi        = 150

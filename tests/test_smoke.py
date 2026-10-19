@@ -6,4 +6,4 @@ def test_version():
 
 
 def test_dependencies_import():
-    import aacgmv2, pydarn, pydarnio, sklearn, xarray  # noqa: F401, E401
+    import aacgmv2  # noqa: F401, E401

@@ -1,0 +1,10 @@
+# Fan map of the bks fitacf++ scan at 03:30 UT: velocity and the conventional ground-scatter flag.
+# Needs the demo output first:  make median-demo
+# Run:  make plot-fov CONFIG=configs/plot_fov_demo.toml
+[plot]
+inputs = ["data/outputs/demo/bks/20250208.0300.00.bks.fitacf.pl.bz2"]
+time   = 2025-02-08T03:30:00
+params = ["v", "gflg_conv"]
+coords = "geo"
+out    = "data/figures/demo"
+name   = "fov_bks_0330_fitacfpp"

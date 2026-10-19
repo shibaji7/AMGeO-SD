@@ -1,0 +1,13 @@
+# RTI of beam 12 (bks): raw fitacf 2.5 on top, fitacf++ below with its classification.
+# Needs the demo output first:  make median-demo
+# Run:  make plot-rti CONFIG=configs/plot_rti_demo.toml
+[plot]
+inputs  = ["tests/data/bks_20250208"]
+compare = ["data/outputs/demo/bks/bks_202502080300_202502080400.fitacf++.nc"]
+beam    = 12
+start   = 2025-02-08T03:00:00
+end     = 2025-02-08T04:00:00
+params  = ["v"]
+flag    = "gflg"
+out     = "data/figures/demo"
+name    = "rti_bks_b12_raw_vs_fitacfpp"

@@ -19,17 +19,36 @@ from amgeo_sd.io import (
 def make_record(t: dt.datetime, bmnum: int, scan: int = 0, slist=(3, 4, 7), **over) -> dict:
     n = len(slist)
     rec = {
-        "time.yr": t.year, "time.mo": t.month, "time.dy": t.day, "time.hr": t.hour,
-        "time.mt": t.minute, "time.sc": t.second, "time.us": t.microsecond,
-        "bmnum": bmnum, "scan": scan, "tfreq": 10500, "noise.sky": 2.5, "nrang": 75,
-        "channel": 1, "cp": 3, "rsep": 45, "frang": 180, "smsep": 300, "lagfr": 1200,
-        "mppul": 8, "intt.sc": 3, "intt.us": 0,
+        "time.yr": t.year,
+        "time.mo": t.month,
+        "time.dy": t.day,
+        "time.hr": t.hour,
+        "time.mt": t.minute,
+        "time.sc": t.second,
+        "time.us": t.microsecond,
+        "bmnum": bmnum,
+        "scan": scan,
+        "tfreq": 10500,
+        "noise.sky": 2.5,
+        "nrang": 75,
+        "channel": 1,
+        "cp": 3,
+        "rsep": 45,
+        "frang": 180,
+        "smsep": 300,
+        "lagfr": 1200,
+        "mppul": 8,
+        "intt.sc": 3,
+        "intt.us": 0,
     }
     if n:
         rec.update(
-            slist=np.array(slist, dtype=np.int16), v=np.linspace(-50, 50, n, dtype=np.float32),
-            v_e=np.ones(n, np.float32), w_l=np.full(n, 20, np.float32),
-            p_l=np.full(n, 10, np.float32), gflg=np.zeros(n, np.int8),
+            slist=np.array(slist, dtype=np.int16),
+            v=np.linspace(-50, 50, n, dtype=np.float32),
+            v_e=np.ones(n, np.float32),
+            w_l=np.full(n, 20, np.float32),
+            p_l=np.full(n, 10, np.float32),
+            gflg=np.zeros(n, np.int8),
         )
     rec.update(over)
     return rec
@@ -88,8 +107,11 @@ def test_scan_splitting():
 
 
 def test_scan_flag_repeated_at_same_time_does_not_split():
-    recs = [make_record(T0, 0, scan=1, channel=1), make_record(T0, 0, scan=1, channel=2),
-            make_record(T0 + dt.timedelta(seconds=3), 1)]
+    recs = [
+        make_record(T0, 0, scan=1, channel=1),
+        make_record(T0, 0, scan=1, channel=2),
+        make_record(T0 + dt.timedelta(seconds=3), 1),
+    ]
     assert len(beams_to_scans(records_to_beams(recs))) == 1
 
 
@@ -114,13 +136,29 @@ def test_dataframe_extra_columns_and_empty_beams():
     assert beams_to_dataframe([]).empty
 
 
+def test_dataframe_dtypes_survive_beams_without_echoes():
+    """An echo-less beam used to give an untyped empty frame that turned all columns to object on concat."""
+    recs = [
+        make_record(T0, 0, scan=1),
+        make_record(T0 + dt.timedelta(seconds=3), 1, slist=()),
+        make_record(T0 + dt.timedelta(seconds=6), 2),
+    ]
+    df = scans_to_dataframe(beams_to_scans(records_to_beams(recs)))
+    assert df["v"].dtype == np.float64 and df["slist"].dtype == np.int64 and df["time"].dtype.kind == "M"
+    assert df["gflg"].dtype == np.int8 and len(df) == 6
+    empty = scans_to_dataframe(beams_to_scans(records_to_beams([make_record(T0, 0, slist=())])))
+    assert empty.empty and empty["v"].dtype == np.float64 and empty["scnum"].dtype == np.int64
+
+
 def test_find_files_by_name_and_overlap(tmp_path):
     d = tmp_path / "2015" / "fitacf" / "bks"
     d.mkdir(parents=True)
-    names = ["20150316.2300.00.bks.a.fitacf.bz2",  # runs 23:00-01:00, overlaps day start
-             "20150317.0100.00.bks.a.fitacf.bz2",  # 01:00-03:00
-             "20150317.0300.00.bks.a.fitacf.bz2",  # 03:00-05:00
-             "20150317.0500.00.bks.a.fitacf.bz2"]  # after the window
+    names = [
+        "20150316.2300.00.bks.a.fitacf.bz2",  # runs 23:00-01:00, overlaps day start
+        "20150317.0100.00.bks.a.fitacf.bz2",  # 01:00-03:00
+        "20150317.0300.00.bks.a.fitacf.bz2",  # 03:00-05:00
+        "20150317.0500.00.bks.a.fitacf.bz2",
+    ]  # after the window
     for n in names:
         (d / n).touch()
     got = find_fitacf_files("bks", dt.datetime(2015, 3, 17, 2), dt.datetime(2015, 3, 17, 4), root=tmp_path)
@@ -129,7 +167,9 @@ def test_find_files_by_name_and_overlap(tmp_path):
 
 @pytest.mark.parametrize("suffix", ["", ".bz2", ".gz"])
 def test_read_file_decompresses_before_decoding(tmp_path, monkeypatch, suffix):
-    import bz2, gzip
+    import bz2
+    import gzip
+
     import pydarnio
 
     seen = {}
@@ -142,6 +182,15 @@ def test_read_file_decompresses_before_decoding(tmp_path, monkeypatch, suffix):
     assert seen["b"] == b"payload"
 
 
+def test_archive_lookup_skips_fitacfpp_files(tmp_path):
+    d = tmp_path / "2015" / "fitacf" / "bks"
+    d.mkdir(parents=True)
+    (d / "20150317.0200.00.bks.a.fitacf.bz2").touch()
+    (d / "20150317.0200.00.bks.fitacf.pl.bz2").touch()
+    got = find_fitacf_files("bks", dt.datetime(2015, 3, 17, 2), dt.datetime(2015, 3, 17, 3), root=tmp_path)
+    assert [p.name for p in got] == ["20150317.0200.00.bks.a.fitacf.bz2"]
+
+
 def test_find_files_needs_root(monkeypatch):
     monkeypatch.delenv("AMGEO_SD_DATA", raising=False)
     with pytest.raises(ValueError, match="AMGEO_SD_DATA"):
@@ -149,6 +198,7 @@ def test_find_files_needs_root(monkeypatch):
 
 
 # ---- real data -------------------------------------------------------------------
+
 
 @pytest.mark.realdata
 def test_real_file_decodes(fitacf_files):

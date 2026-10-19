@@ -35,6 +35,8 @@ class Beam:
         Sky noise level.
     intt_sc, intt_us : int
         Integration time, seconds and microseconds.
+    fit_version : str
+        Fit algorithm revision from the file, e.g. ``"2.5"`` (fitacf) or ``"3.0"`` (fitacf3); ``""`` if absent.
     scan : int
         ``1`` if this beam starts a scan, else ``0``. Fitacf marks abnormal scan
         starts with ``-1``; these are folded into ``1``.
@@ -65,6 +67,7 @@ class Beam:
     intt_sc: int = 0
     intt_us: int = 0
     scan: int = 0
+    fit_version: str = ""
     slist: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=int))
     v: np.ndarray = field(default_factory=_empty_float)
     v_e: np.ndarray = field(default_factory=_empty_float)
@@ -94,7 +97,7 @@ class Scan:
     freq: float = np.nan
     nsky: float = np.nan
 
-    def update(self) -> "Scan":
+    def update(self) -> Scan:
         """Refresh ``stime``, ``etime`` and mean ``freq``/``nsky`` from the beams."""
         if self.beams:
             self.stime = min(b.time for b in self.beams)

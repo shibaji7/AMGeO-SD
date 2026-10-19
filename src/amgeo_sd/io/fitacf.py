@@ -1,6 +1,8 @@
 """Read SuperDARN ``fitacf`` / ``fitacf3`` files into beams, scans and DataFrames.
 
-Replaces the legacy ``sd/get_fit_data.py`` (``FetchData``). Main differences:
+Replaces the legacy ``sd/get_fit_data.py`` (``FetchData``). Reads fitacf 2.0, 2.5 and 3.0 files
+(they share one record layout; the revision is stored in ``Beam.fit_version``) and the fitacf++
+files written by :mod:`amgeo_sd.io.writer` (``*.fitacf.pl.bz2``, DMAP with extra arrays). Main differences:
 
 * decoding uses ``pydarnio.read_fitacf`` (pydarnio >= 2), not ``SDarnRead``;
 * file discovery parses the *file name* (not the full path) and takes the data
@@ -36,6 +38,8 @@ from amgeo_sd.models import GATE_FIELDS, Beam, Scan
 DATA_ROOT_ENV = "AMGEO_SD_DATA"
 #: Default layout below the root: ``<year>/<ftype>/<rad>/<YYYYMMDD>.*``.
 DEFAULT_LAYOUT = "{year}/{ftype}/{rad}/{date}.*{ftype}*"
+#: Suffix of fitacf++ DMAP files (see :mod:`amgeo_sd.io.writer`); the raw-data archive lookup skips them.
+FITACFPP_SUFFIX = ".fitacf.pl.bz2"
 #: Each archive file spans two hours.
 FILE_SPAN = dt.timedelta(hours=2)
 
@@ -43,10 +47,19 @@ _FNAME_RE = re.compile(r"^(?P<date>\d{8})\.(?P<hm>\d{4})\.(?P<sc>\d{2})\.")
 
 # fitacf record key -> Beam attribute, for scalar header values.
 _SCALARS = {
-    "bmnum": "bmnum", "channel": "channel", "cp": "cp", "tfreq": "tfreq",
-    "noise.sky": "noise_sky", "nrang": "nrang", "rsep": "rsep", "frang": "frang",
-    "smsep": "smsep", "lagfr": "lagfr", "mppul": "mppul",
-    "intt.sc": "intt_sc", "intt.us": "intt_us",
+    "bmnum": "bmnum",
+    "channel": "channel",
+    "cp": "cp",
+    "tfreq": "tfreq",
+    "noise.sky": "noise_sky",
+    "nrang": "nrang",
+    "rsep": "rsep",
+    "frang": "frang",
+    "smsep": "smsep",
+    "lagfr": "lagfr",
+    "mppul": "mppul",
+    "intt.sc": "intt_sc",
+    "intt.us": "intt_us",
 }
 _INT_ATTRS = {"bmnum", "channel", "cp", "nrang", "mppul", "intt_sc", "intt_us"}
 
@@ -59,13 +72,22 @@ def _open_bytes(path: Path) -> bytes:
 
 
 def read_fitacf_file(path: str | os.PathLike) -> list[dict]:
-    """Decode every record of one fitacf file.
+    """Decode every record of one fitacf (or fitacf++) file.
 
-    Corrupted trailing data is tolerated: valid records are returned and a
-    warning is logged with the byte offset where decoding stopped.
+    Corrupted trailing data is tolerated: valid records are returned and a warning is logged with
+    the byte offset where decoding stopped. ``pydarnio.read_fitacf`` rejects fields outside the
+    fitacf standard, so a file it cannot parse (fitacf++) is re-read as generic DMAP.
     """
     path = Path(path)
-    records, bad_byte = pydarnio.read_fitacf(_open_bytes(path), mode="lax")
+    raw = _open_bytes(path)
+    records, bad_byte = pydarnio.read_fitacf(raw, mode="lax")
+    if not records and raw:
+        try:
+            records, bad_byte = pydarnio.read_dmap(raw, mode="lax")
+            logger.debug(f"{path.name}: read as generic DMAP (non-standard fitacf fields)")
+        except Exception as exc:  # truly corrupt
+            logger.warning(f"{path.name}: unreadable ({exc})")
+            return []
     if bad_byte is not None:
         logger.warning(f"{path.name}: corrupt data from byte {bad_byte}; kept {len(records)} records")
     return records
@@ -73,8 +95,13 @@ def read_fitacf_file(path: str | os.PathLike) -> list[dict]:
 
 def _record_time(rec: dict) -> dt.datetime:
     return dt.datetime(
-        int(rec["time.yr"]), int(rec["time.mo"]), int(rec["time.dy"]),
-        int(rec["time.hr"]), int(rec["time.mt"]), int(rec["time.sc"]), int(rec["time.us"]),
+        int(rec["time.yr"]),
+        int(rec["time.mo"]),
+        int(rec["time.dy"]),
+        int(rec["time.hr"]),
+        int(rec["time.mt"]),
+        int(rec["time.sc"]),
+        int(rec["time.us"]),
     )
 
 
@@ -88,6 +115,15 @@ def _per_echo(rec: dict, key: str, n: int, dtype, fill) -> np.ndarray:
     return arr
 
 
+#: Per-echo arrays that fitacf++ files carry besides the fitacf ones; stored in ``Beam.extra``.
+EXTRA_ARRAYS = ("v_mad", "gflg_conv", "gflg_kde", "clabel", "cluster_tag", "gflg_ribiero")
+
+
+def _fit_version(rec: dict) -> str:
+    major, minor = rec.get("fitacf.revision.major"), rec.get("fitacf.revision.minor")
+    return f"{int(major)}.{int(minor)}" if major is not None and minor is not None else ""
+
+
 def record_to_beam(rec: dict) -> Beam:
     """Convert one decoded fitacf record into a :class:`Beam`."""
     kwargs: dict = {}
@@ -98,8 +134,17 @@ def record_to_beam(rec: dict) -> Beam:
     kwargs["scan"] = int(rec.get("scan", 0) != 0)
     slist = np.atleast_1d(np.asarray(rec["slist"])).astype(int) if "slist" in rec else np.empty(0, dtype=int)
     n = len(slist)
+    extra = {}
+    for key in EXTRA_ARRAYS:
+        if key in rec:
+            arr = _per_echo(rec, key, n, float, np.nan)
+            if key in ("gflg_conv", "gflg_kde"):
+                arr[arr < 0] = np.nan  # written as -1 where the flag was not computed
+            extra[key] = arr
     return Beam(
         time=_record_time(rec),
+        fit_version=_fit_version(rec),
+        extra=extra,
         slist=slist,
         v=_per_echo(rec, "v", n, float, np.nan),
         v_e=_per_echo(rec, "v_e", n, float, np.nan),
@@ -135,7 +180,7 @@ def beams_to_scans(beams: Sequence[Beam], s_mode: str = "normal") -> list[Scan]:
     if not beams:
         return []
     scans, current = [], Scan(beams=[beams[0]], s_mode=s_mode)
-    for prev, beam in zip(beams[:-1], beams[1:]):
+    for prev, beam in zip(beams[:-1], beams[1:], strict=True):
         if beam.scan == 1 and beam.time != prev.time:
             scans.append(current.update())
             current = Scan(s_mode=s_mode)
@@ -145,16 +190,47 @@ def beams_to_scans(beams: Sequence[Beam], s_mode: str = "normal") -> list[Scan]:
 
 
 _BEAM_COLUMNS = (
-    "time", "bmnum", "channel", "cp", "tfreq", "noise_sky", "scan", "nrang", "rsep", "frang",
-    "smsep", "lagfr", "mppul", "intt_sc", "intt_us",
+    "time",
+    "bmnum",
+    "channel",
+    "cp",
+    "tfreq",
+    "noise_sky",
+    "scan",
+    "nrang",
+    "rsep",
+    "frang",
+    "smsep",
+    "lagfr",
+    "mppul",
+    "intt_sc",
+    "intt_us",
 )
+
+
+_INT_COLUMNS = {"bmnum", "channel", "cp", "nrang", "mppul", "intt_sc", "intt_us", "scan", "slist", "scnum", "sbnum"}
+
+
+def _empty_frame(columns: Sequence[str]) -> pd.DataFrame:
+    """Zero-row frame with proper dtypes (an untyped one turns every column to ``object`` on concat)."""
+
+    def dtype(c: str) -> str:
+        if c == "time":
+            return "datetime64[us]"
+        if c == "gflg":
+            return "int8"
+        return "int64" if c in _INT_COLUMNS else "float64"
+
+    return pd.DataFrame({c: pd.Series(dtype=dtype(c)) for c in columns})
 
 
 def beams_to_dataframe(beams: Iterable[Beam], extra: Sequence[str] = ()) -> pd.DataFrame:
     """One row per echo, with the beam metadata repeated on each row.
 
-    ``extra`` names additional per-echo arrays stored in ``Beam.extra`` to include.
+    ``extra`` names additional per-echo arrays stored in ``Beam.extra`` to include. Beams without
+    echoes contribute no rows.
     """
+    columns = list(_BEAM_COLUMNS) + list(GATE_FIELDS) + list(extra)
     frames = []
     for b in beams:
         n = b.n_echoes
@@ -166,9 +242,8 @@ def beams_to_dataframe(beams: Iterable[Beam], extra: Sequence[str] = ()) -> pd.D
         cols.update({k: b.extra[k] for k in extra})
         frames.append(pd.DataFrame(cols))
     if not frames:
-        return pd.DataFrame(columns=list(_BEAM_COLUMNS) + list(GATE_FIELDS) + list(extra))
-    df = pd.concat(frames, ignore_index=True)
-    return df[list(_BEAM_COLUMNS) + list(GATE_FIELDS) + list(extra)]
+        return _empty_frame(columns)
+    return pd.concat(frames, ignore_index=True)[columns]
 
 
 def scans_to_dataframe(scans: Iterable[Scan], extra: Sequence[str] = (), start_scnum: int = 0) -> pd.DataFrame:
@@ -177,11 +252,13 @@ def scans_to_dataframe(scans: Iterable[Scan], extra: Sequence[str] = (), start_s
     frames = []
     for i, scan in enumerate(scans):
         for j, beam in enumerate(scan.beams):
+            if beam.n_echoes == 0:
+                continue
             df = beams_to_dataframe([beam], extra)
             df["scnum"], df["sbnum"] = i + start_scnum, j
             frames.append(df)
     if not frames:
-        return beams_to_dataframe([], extra).assign(scnum=pd.Series(dtype=int), sbnum=pd.Series(dtype=int))
+        return _empty_frame(list(_BEAM_COLUMNS) + list(GATE_FIELDS) + list(extra) + ["scnum", "sbnum"])
     return pd.concat(frames, ignore_index=True)
 
 
@@ -215,6 +292,8 @@ def find_fitacf_files(
     while day <= end:
         pattern = layout.format(year=day.year, ftype=ftype, rad=rad, date=day.strftime("%Y%m%d"))
         for path in root.glob(pattern):
+            if path.name.endswith(FITACFPP_SUFFIX):
+                continue  # filtered data, never mixed with the raw archive
             t0 = _file_start(path)
             if t0 is not None and t0 <= end and t0 + FILE_SPAN > start:
                 found.add(path)
@@ -258,20 +337,26 @@ class FitacfReader:
     ):
         self.rad, self.start, self.end, self.ftype = rad, start, end, ftype
         self.files = (
-            sorted(Path(f) for f in files) if files is not None
-            else find_fitacf_files(rad, start, end, ftype, root)
+            sorted(Path(f) for f in files) if files is not None else find_fitacf_files(rad, start, end, ftype, root)
         )
         if not self.files:
             logger.warning(f"no {ftype} files for {rad} between {start} and {end}")
+        self._records: list[dict] | None = None
+
+    def records(self) -> list[dict]:
+        """Raw decoded records inside the window, time-ordered. Decoded once and cached."""
+        if self._records is None:
+            recs: list[dict] = []
+            for f in self.files:
+                logger.debug(f"reading {f}")
+                recs.extend(r for r in read_fitacf_file(f) if self.start <= _record_time(r) <= self.end)
+            recs.sort(key=_record_time)
+            self._records = recs
+        return self._records
 
     def beams(self) -> list[Beam]:
         """All beams in the window, time-ordered."""
-        beams: list[Beam] = []
-        for f in self.files:
-            logger.debug(f"reading {f}")
-            beams.extend(records_to_beams(read_fitacf_file(f), self.start, self.end))
-        beams.sort(key=lambda b: b.time)
-        return beams
+        return records_to_beams(self.records())
 
     def scans(self, s_mode: str = "normal") -> list[Scan]:
         """All scans in the window (see :func:`beams_to_scans`)."""

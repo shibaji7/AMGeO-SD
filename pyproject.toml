@@ -22,6 +22,7 @@ dependencies = [
     "matplotlib",
     "loguru",
     "pyyaml",
+    "python-dateutil",
     "pydarn>=4.3",
     "pydarnio>=2.1",
     "aacgmv2",
@@ -33,12 +34,31 @@ amgeo-sd = "amgeo_sd.cli:main"
 
 [project.optional-dependencies]
 plots = ["cartopy", "shapely"]
-dev = ["pytest", "pytest-cov"]
+dev = ["pytest", "pytest-cov", "ruff"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
+pythonpath = ["tests"]
 testpaths = ["tests"]
 addopts = "-ra"
+filterwarnings = ["ignore:numpy.ndarray size changed:RuntimeWarning"]
 markers = ["realdata: needs .fitacf files in tests/data (skipped when absent)"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+# Ported unchanged from the legacy code base (DaViTPy-derived geometry): kept in their original style.
+extend-exclude = ["_bkp", "src/amgeo_sd/geo/geopack.py", "src/amgeo_sd/geo/fov.py", "src/amgeo_sd/geo/vheight.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "D100", "D101", "D102", "D103"]  # D1xx: missing docstrings
+ignore = ["E501"]  # long lines are left to the formatter
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "B011"]
+"src/amgeo_sd/__main__.py" = ["D100"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["amgeo_sd"]
