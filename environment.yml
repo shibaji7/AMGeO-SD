@@ -1,0 +1,27 @@
+name: amgeo-sd
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - xarray
+  - netcdf4
+  - h5py
+  - pytables
+  - loguru
+  - pyyaml
+  - cartopy
+  - shapely
+  - pytest
+  - pytest-cov
+  - pip
+  - pip:
+      - pydarn>=4.3
+      - pydarnio>=2.1
+      - aacgmv2
+      - pysolar
+      - -e .

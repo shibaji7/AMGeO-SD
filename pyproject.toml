@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amgeo-sd"
+version = "0.1.0"
+description = "SuperDARN high-confidence scatter classification (fitacf++) for AMGeO"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+authors = [{ name = "Shibaji Chakraborty" }]
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+    "scikit-learn",
+    "xarray",
+    "netCDF4",
+    "h5py",
+    "tables",
+    "matplotlib",
+    "loguru",
+    "pyyaml",
+    "pydarn>=4.3",
+    "pydarnio>=2.1",
+    "aacgmv2",
+    "pysolar",
+]
+
+[project.optional-dependencies]
+plots = ["cartopy", "shapely"]
+dev = ["pytest", "pytest-cov"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = ["realdata: needs .fitacf files in tests/data (skipped when absent)"]
