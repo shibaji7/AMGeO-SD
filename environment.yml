@@ -1,4 +1,4 @@
-name: amgeo-sd
+name: amgeo
 channels:
   - conda-forge
 dependencies:
