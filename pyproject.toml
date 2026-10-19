@@ -58,7 +58,9 @@ ignore = ["E501"]  # long lines are left to the formatter
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D", "B011"]
+"examples/*" = ["D", "E402"]  # scripts: no docstring rule; imports after matplotlib.use() are intended
 "src/amgeo_sd/__main__.py" = ["D100"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["amgeo_sd"]
+known-local-folder = ["common"]

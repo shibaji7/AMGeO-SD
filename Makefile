@@ -26,6 +26,8 @@ EXTRA  ?=
 COMPARE ?=
 GEOMETRY ?=
 GMM    ?=
+DAY    ?= 2025-02-08
+WORK   ?= data/analysis
 BEAM   ?=
 TIME   ?=
 PARAMS ?=
@@ -33,7 +35,7 @@ COORDS ?=
 FIGDIR ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help env env-update env-remove install data-unpack data-info data-clean median median-demo dbscan dbscan-demo out-clean plot-rti plot-fov plot-demo config-show lint format test test-unit test-real test-cov clean
+.PHONY: help env env-update env-remove install data-unpack data-info data-clean median median-demo dbscan dbscan-demo out-clean plot-rti plot-fov plot-demo analyse-day config-show lint format test test-unit test-real test-cov clean
 
 ##@ Help
 help: ## Show this help
@@ -109,13 +111,26 @@ plot-demo: median-demo ## Run the demo filter, then draw RTI + FoV figures (raw 
 	$(MAKE) --no-print-directory plot-rti INPUT=tests/data/gbr_20250208 COMPARE=data/outputs/demo/gbr/gbr_202502080300_202502080400.fitacf++.nc BEAM=7 START=2025-02-08T03:00 END=2025-02-08T04:00 PARAMS=v FIGDIR=data/figures/demo EXTRA="--name rti_gbr_b07_raw_vs_fitacfpp"
 	$(MAKE) --no-print-directory plot-fov INPUT=tests/data/gbr_20250208 TIME=2025-02-08T03:05 PARAMS="v gflg" START=2025-02-08T03:00 END=2025-02-08T03:10 FIGDIR=data/figures/demo EXTRA="--name fov_gbr_0305_raw"
 
+ANALYSIS_DIR = examples/median_day_analysis
+ANALYSIS_DATA = $(or $(INPUT),tests/data/$(RAD)_$(subst -,,$(DAY)))
+ANALYSIS_FLAGS = --rad $(RAD) --work $(WORK)/$(RAD) --day $(DAY) $(if $(INPUT),--data $(INPUT))
+
+analyse-day: ## Whole-day comparison of the median filter and the DBSCAN model for RAD (DAY, INPUT, WORK): runs both, writes tables + figures to data/analysis/<rad>/
+	@test -n "$(RAD)" || { echo "usage: make analyse-day RAD=bks [DAY=2025-02-08 INPUT=tests/data/bks_20250208 WORK=data/analysis]"; exit 2; }
+	$(MAKE) --no-print-directory median RAD=$(RAD) START=$(DAY)T00:00 END=$(DAY)T23:59:59 INPUT=$(ANALYSIS_DATA) SID=day OUT=$(WORK)/$(RAD) JOBS=4 EXTRA="--no-fitacf"
+	$(MAKE) --no-print-directory dbscan RAD=$(RAD) START=$(DAY)T00:00 END=$(DAY)T23:59:59 INPUT=$(ANALYSIS_DATA) SID=day-dbscan OUT=$(WORK)/$(RAD) EXTRA="--no-fitacf"
+	$(PY) $(ANALYSIS_DIR)/analysis_day.py $(ANALYSIS_FLAGS) | tee $(WORK)/$(RAD)/retention.txt
+	$(PY) $(ANALYSIS_DIR)/analysis_more.py $(ANALYSIS_FLAGS) | tee $(WORK)/$(RAD)/edges_and_flags.txt
+	$(PY) $(ANALYSIS_DIR)/analysis_flags.py $(ANALYSIS_FLAGS) | tee $(WORK)/$(RAD)/flag_physics.txt
+	$(PY) $(ANALYSIS_DIR)/plot_day.py $(ANALYSIS_FLAGS) $(if $(BEAM),--beam $(BEAM))
+
 ##@ Quality
 lint: ## Static checks (ruff): errors, unused code, import order, missing docstrings
-	$(RUN) ruff check src tests
+	$(RUN) ruff check src tests examples
 
 format: ## Format the code with ruff (the ported legacy geometry modules are excluded)
-	$(RUN) ruff format src tests
-	$(RUN) ruff check --fix src tests
+	$(RUN) ruff format src tests examples
+	$(RUN) ruff check --fix src tests examples
 
 test: ## Run the whole test suite (real-data tests skip if tests/data is empty)
 	$(PYTEST) -q

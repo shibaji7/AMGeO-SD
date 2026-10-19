@@ -10,6 +10,7 @@ What is not ported yet is listed in [PORTING.md](PORTING.md).
 | `make env` / `env-update` / `env-remove` / `install` | conda env `amgeo` (Python 3.12) from `environment.yml`; editable install of the package |
 | `make data-unpack` / `data-info` / `data-clean` | unzip `tests/data/archives/*.zip`; summarise beams / scans / echoes per radar-day; delete unpacked folders that can be restored |
 | `make median` / `median-demo` | median-filter model: fitacf -> fitacf++ (`.nc` and `.fitacf.pl.bz2`) |
+| `make analyse-day RAD=bks` | whole-day comparison of the median filter and the DBSCAN model: runs both, prints retention / flag tables, draws figures (`examples/median_day_analysis/`) |
 | `make dbscan` / `dbscan-demo` | DBSCAN / Gaussian-mixture model: raw echoes labelled with clusters and the Ribiero scatter flag -> fitacf++ |
 | `make plot-rti` / `plot-fov` / `plot-demo` | RTI and field-of-view figures from fitacf or fitacf++ files |
 | `make config-show` | print the resolved median parameters without running |
