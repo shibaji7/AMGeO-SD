@@ -3,7 +3,7 @@
 Port of the legacy ``FanPlots`` (``sd/fan_rti.py``, ``sd/plotlib.py``) and the ``SDCarto`` GeoAxes subclass
 (``tools/sd_carto.py``). The custom registered axes class is gone: a plain cartopy axes plus helper
 functions does the same, and the data layer no longer depends on ``descartes``. Each echo is drawn as the
-quadrilateral of its range cell, using the legacy field-of-view geometry (:func:`amgeo_sd.geo.radar_fov`).
+quadrilateral of its range cell, located with :func:`amgeo_sd.geo.radar_fov` (``geometry``: ``legacy`` or ``pydarn``).
 
 ``coords="aacgmv2"`` converts cell corners, radar position and coastlines to AACGM (300 km for the data, 0 km for
 the coastlines) and draws magnetic latitude/longitude on the same map projection.
@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-from amgeo_sd.geo import hardware, radar_fov
+from amgeo_sd.geo import BACKENDS, hardware, radar_fov
 from amgeo_sd.plotting.style import FLAG_CLASSES, PARAMS, apply_style
 
 COORDS = ("geo", "aacgmv2")
@@ -84,12 +84,17 @@ class FanPlots:
         dpi: int = 120,
         coords: str = "geo",
         projection: str = "auto",
+        geometry: str = "legacy",
+        altitude: float = GATE_HEIGHT_KM,
     ):
         if coords not in COORDS:
             raise ValueError(f"coords must be one of {COORDS}")
+        if geometry not in BACKENDS:
+            raise ValueError(f"geometry must be one of {BACKENDS}")
         apply_style()
         self.fig = plt.figure(figsize=figsize, dpi=dpi)
         self.nrows, self.ncols, self.coords, self.projection_kind = nrows, ncols, coords, projection
+        self.geometry, self.altitude = geometry, altitude
         self._created = 0
         self._latlon = ccrs.PlateCarree()
 
@@ -201,9 +206,9 @@ class FanPlots:
         if not (np.isfinite(frang) and np.isfinite(rsep)):  # e.g. NetCDF files without these variables
             logger.debug("frang/rsep missing in the data; assuming 180 / 45 km")
             frang, rsep = 180.0, 45.0
-        fov = radar_fov(rad, t0, frang=frang, rsep=rsep, azm=False)
+        fov = radar_fov(rad, t0, frang=frang, rsep=rsep, altitude=self.altitude, azm=False, backend=self.geometry)
         ng = min(fov["glat"].shape[1] - 1, max_gate or nrang)
-        fov_lat, fov_lon = _to_frame(fov["glat"][:, : ng + 1], fov["glon"][:, : ng + 1], self.coords, t0)
+        fov_lat, fov_lon = _to_frame(fov["glat"][:, : ng + 1], fov["glon"][:, : ng + 1], self.coords, t0, self.altitude)
         ax = self._add_axis(t0, fov_lat, fov_lon, terminator)
         self.overlay_fov(ax, fov_lat, fov_lon)
         self.overlay_radar(ax, rad, t0)
@@ -257,12 +262,16 @@ class FanPlots:
 
     def plot_layfovs(self, rads: Sequence[str], date: dt.datetime):
         """Outlines of several radars' fields of view on one map."""
-        fovs = {r: radar_fov(r, date, azm=False) for r in rads}
-        lat = np.concatenate([_to_frame(f["glat"], f["glon"], self.coords, date)[0].ravel() for f in fovs.values()])
-        lon = np.concatenate([_to_frame(f["glat"], f["glon"], self.coords, date)[1].ravel() for f in fovs.values()])
+        fovs = {r: radar_fov(r, date, altitude=self.altitude, azm=False, backend=self.geometry) for r in rads}
+        lat = np.concatenate(
+            [_to_frame(f["glat"], f["glon"], self.coords, date, self.altitude)[0].ravel() for f in fovs.values()]
+        )
+        lon = np.concatenate(
+            [_to_frame(f["glat"], f["glon"], self.coords, date, self.altitude)[1].ravel() for f in fovs.values()]
+        )
         ax = self._add_axis(date, lat, lon)
         for r, f in fovs.items():
-            flat, flon = _to_frame(f["glat"], f["glon"], self.coords, date)
+            flat, flon = _to_frame(f["glat"], f["glon"], self.coords, date, self.altitude)
             self.overlay_fov(ax, flat, flon)
             self.overlay_radar(ax, r, date)
         return ax
@@ -298,11 +307,20 @@ def plot_fan(
     kind: str = "",
     gflg_mask: str | None = "gflg",
     dpi: int = 120,
+    geometry: str = "legacy",
+    altitude: float = GATE_HEIGHT_KM,
     **kwargs,
 ) -> FanPlots:
     """One map per entry of ``params`` for the scan nearest to ``date`` (side by side)."""
     fan = FanPlots(
-        figsize=(5.5 * len(params) + 1, 5.5), nrows=1, ncols=len(params), dpi=dpi, coords=coords, projection=projection
+        figsize=(5.5 * len(params) + 1, 5.5),
+        nrows=1,
+        ncols=len(params),
+        dpi=dpi,
+        coords=coords,
+        projection=projection,
+        geometry=geometry,
+        altitude=altitude,
     )
     for p in params:
         fan.plot_fov(df, date, rad, param=p, gflg_mask=gflg_mask, title=f"{rad.upper()} {kind}".strip(), **kwargs)

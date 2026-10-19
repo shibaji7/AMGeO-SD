@@ -70,6 +70,8 @@ def run_plot(kind: str, settings: Settings) -> str:
             dpi=p.dpi,
             max_gate=p.max_gate or None,
             terminator=p.terminator,
+            geometry=settings.geometry.backend,
+            altitude=settings.geometry.altitude,
         )
     import matplotlib.pyplot as plt
 

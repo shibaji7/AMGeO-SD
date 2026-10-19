@@ -4,8 +4,9 @@ SuperDARN high-confidence scatter classification (ionospheric vs. ground scatter
 The 2020-2022 research code is being modernised into the `amgeo_sd` package (Python 3.12, src layout).
 
 > **Status:** revamp in progress. Ported and tested on real bks / gbr data: fitacf reader (2.0 / 2.5 / 3.0), radar geometry,
-> the median-filter model with fitacf++ output (`.nc` and `.fitacf.pl.bz2`), RTI and field-of-view plots, TOML parameter files.
-> Still to move: the two clustering models and their plots, see [`docs/PORTING.md`](docs/PORTING.md).
+> the median-filter and the DBSCAN / Gaussian-mixture models with fitacf++ output (`.nc` and `.fitacf.pl.bz2`), RTI and
+> field-of-view plots, a switchable radar geometry, TOML parameter files.
+> Still to move: the beam-gate-time clustering model and its plots, see [`docs/PORTING.md`](docs/PORTING.md).
 > The original code is untouched in [`_bkp/`](_bkp/README.md).
 
 ## Quick start
@@ -16,6 +17,7 @@ Everything runs through `make`; `make help` lists all targets, [`docs/USAGE.md`]
 make env          # create conda env "amgeo" (python 3.12) and install the package
 make data-unpack  # unzip tests/data/archives/*.zip (git-ignored real data)
 make median-demo  # median-filter model on 1 h of bks and gbr -> data/outputs/demo/
+make dbscan-demo  # DBSCAN / GMM cluster model on the same hours -> data/outputs/demo-dbscan/
 make plot-demo    # RTI and field-of-view figures, raw fitacf vs fitacf++ -> data/figures/demo/
 make test         # unit tests + tests on the real bks / gbr files
 ```

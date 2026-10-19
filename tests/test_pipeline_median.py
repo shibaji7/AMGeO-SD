@@ -242,3 +242,53 @@ def test_cli_median(tmp_path, capsys, fitacf_files):
 def test_pipeline_errors(tmp_path):
     with pytest.raises(RuntimeError, match="no fitacf data"):
         run_median_filter("bks", T0, T0 + dt.timedelta(minutes=10), files=[], out_base=tmp_path)
+
+
+@pytest.mark.realdata
+def test_geometry_backend_switch_reaches_netcdf_params_and_plots(tmp_path, fitacf_files):
+    folder = DATA / "bks_20250208"
+    if not folder.is_dir():
+        pytest.skip("bks_20250208 not unpacked")
+    start, end = dt.datetime(2025, 2, 8, 3, 0), dt.datetime(2025, 2, 8, 3, 8)
+    files = sorted(folder.glob("*.bz2"))
+    out = {
+        g: run_median_filter(
+            "bks",
+            start,
+            end,
+            files=files,
+            out_base=tmp_path,
+            sim_id=g,
+            kde=False,
+            write_fitacf=False,
+            geometry=g,
+            altitude=300.0,
+            argv=["t"],
+        )
+        for g in ("legacy", "pydarn")
+    }
+    ds = {g: xr.open_dataset(r["nc_file"]) for g, r in out.items()}
+    assert ds["legacy"].attrs["geometry_backend"] == "legacy" and ds["pydarn"].attrs["geometry_backend"] == "pydarn"
+    np.testing.assert_allclose(ds["legacy"]["gdlat"].values, GOLDEN["bks_glat"], atol=1e-9)
+    assert np.abs(ds["pydarn"]["gdlat"].values - ds["legacy"]["gdlat"].values).max() > 0.05
+    np.testing.assert_array_equal(ds["legacy"]["v"].values, ds["pydarn"]["v"].values)  # geometry never changes the data
+    assert load_settings(Path(out["pydarn"]["out_dir"]) / "params.toml").geometry.backend == "pydarn"
+    rc = main(
+        [
+            "plot",
+            "fov",
+            "-i",
+            out["pydarn"]["nc_file"],
+            "-t",
+            "2025-02-08T03:04",
+            "-p",
+            "v",
+            "--geometry",
+            "pydarn",
+            "-o",
+            str(tmp_path),
+            "--name",
+            "g",
+        ]
+    )
+    assert rc == 0 and (tmp_path / "g.png").exists()

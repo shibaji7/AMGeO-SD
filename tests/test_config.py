@@ -83,3 +83,17 @@ def test_dump_is_annotated_and_round_trips(tmp_path):
 def test_dump_marks_unset_values_as_comments():
     text = dump_settings_toml(Settings())
     assert "# rad " in text and "(unset)" in text
+
+
+def test_geometry_table(tmp_path):
+    f = tmp_path / "g.toml"
+    f.write_text(
+        '[run]\nrad = "bks"\nstart = 2025-02-08T03:00:00\nend = 2025-02-08T04:00:00\n[geometry]\nbackend = "pydarn"\naltitude = 250\n'
+    )
+    s = load_settings(f)
+    assert (s.geometry.backend, s.geometry.altitude) == ("pydarn", 250.0)
+    assert load_settings(f, {"geometry": {"backend": "legacy"}}).geometry.backend == "legacy"
+    assert "[geometry]" in dump_settings_toml(s) and "pydarn" in dump_settings_toml(s)
+    f.write_text(f.read_text().replace("pydarn", "davitpy"))
+    with pytest.raises(ValueError, match="backend"):
+        load_settings(f)

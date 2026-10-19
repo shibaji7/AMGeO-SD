@@ -43,3 +43,32 @@ def test_fov_is_finite_and_range_increases_along_beams():
         steps = np.diff(dist_km, axis=1)
         assert ((steps <= 0).sum(axis=1) <= 1).all() and steps.min() > -10
         assert 100 < dist_km[:, 0].min() and dist_km[:, -1].max() < 6000
+
+
+# ------------------------------------------------------------------ pydarn backend
+def test_pydarn_backend_shapes_and_direct_call():
+    import pydarn
+    from pydarn.utils.coordinates import gate2geographic_location
+
+    fov = radar_fov("bks", DATE, backend="pydarn")
+    assert (
+        fov["glat"].shape == (25, 111) and np.isfinite(fov["glat"]).all() and np.isfinite(fov["gazm"][:-1, :-1]).all()
+    )
+    stid = pydarn.RadarID(pydarn.read_hdw_file("bks", DATE).stid)
+    lat, lon = gate2geographic_location(stid=stid, beam=7, range_gate=30, height=300.0, rsep=45.0, frang=180.0)
+    assert (fov["glat"][7, 30], fov["glon"][7, 30]) == (lat, lon)
+    assert fov["gazm"][7, 30] == pytest.approx(
+        pydarn.calculate_azimuth(lat, lon, 300.0, fov["glat"][7, 31], fov["glon"][7, 31], 300.0)
+    )
+
+
+def test_backends_differ_as_documented_and_agree_on_the_site_side():
+    legacy, new = radar_fov("bks", DATE, azm=False), radar_fov("bks", DATE, backend="pydarn", azm=False)
+    dlat = np.abs(legacy["glat"] - new["glat"])
+    assert 0.05 < dlat.max() < 1.0 and dlat.min() < 0.5  # tenths of a degree: the virtual-height model vs fixed 300 km
+    assert np.abs(legacy["glon"] - new["glon"]).max() < 5
+
+
+def test_unknown_backend_is_rejected():
+    with pytest.raises(ValueError, match="geometry backend"):
+        radar_fov("bks", DATE, backend="davitpy")

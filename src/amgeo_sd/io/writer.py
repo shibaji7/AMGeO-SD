@@ -4,8 +4,9 @@ Each surviving beam of a filtered scan becomes one record built from the *origin
 of the same sounding, so every standard fitacf field (header, ``pwr0``, ``ltab``, ...) is kept and
 tools that read DMAP and look only for the fitacf fields keep working. Then
 
-* ``slist, v, w_l, p_l, gflg`` are replaced by the filtered values and ``v_e`` is NaN (the median
-  has no fit error);
+* ``slist, v, w_l, p_l, gflg`` are replaced by the filtered values; ``v_e`` (velocity error) is set to
+  ``v_mad`` (a robust local spread, similar in size to the fit errors) so it is never NaN, and ``qflg`` is
+  1 for cells the filter added (original cells keep their flag), so tools that select on the quality flag show them;
 * every other per-echo fitacf array (``qflg``, ``p_s``, ``elv``, ``x_*``, ...) is carried over for
   gates that held an echo in the original sounding and is NaN (floats) or 0 (flags/ints) for cells
   the filter added;
@@ -75,6 +76,10 @@ def beam_to_record(beam: Beam, template: dict) -> dict:
     for key, arr in (("v", beam.v), ("v_e", beam.v_e), ("w_l", beam.w_l), ("p_l", beam.p_l)):
         rec[key] = np.asarray(arr).astype(like.get(key, np.float32))
     rec["gflg"] = beam.gflg.astype(like.get("gflg", np.int8))
+    if "v_mad" in beam.extra:
+        rec["v_e"] = np.asarray(beam.extra["v_mad"]).astype(like.get("v_e", np.float32))
+    if "qflg" in rec:  # cells the filter added have no original quality flag: mark them good
+        rec["qflg"] = np.where(src >= 0, rec["qflg"], 1).astype(template["qflg"].dtype)
     for key, dtype in _EXTRA_DTYPES.items():
         if key in beam.extra:
             arr = np.asarray(beam.extra[key], dtype=float)
@@ -84,28 +89,38 @@ def beam_to_record(beam: Beam, template: dict) -> dict:
     return rec
 
 
-def scans_to_records(scans: Sequence[Scan], source_records: Sequence[dict], command: str = "") -> list[dict]:
-    """fitacf++ records for all beams of ``scans``, in time order.
+def scans_to_records(
+    scans: Sequence[Scan],
+    source_records: Sequence[dict],
+    command: str = "",
+    model: str = "median",
+    keep_empty: bool = False,
+) -> list[dict]:
+    """fitacf++ records for the beams of ``scans``, in time order.
 
     ``source_records`` are the raw records the scans were derived from (see
     :meth:`amgeo_sd.io.FitacfReader.records`); a beam without a matching record raises ``KeyError``.
+    ``model`` is stored in ``amgeo.model``. By default beams without echoes are dropped and the scan flag is re-set on
+    the first kept beam of every scan (filters that remove beams); with ``keep_empty`` every beam is written and the
+    original scan flags are kept (models that only label the raw echoes).
     """
     index = {(_record_time(r), int(r["bmnum"]), int(r.get("channel", 0))): r for r in source_records}
     now = dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M:%S")
     out = []
     for scan in scans:
-        beams = sorted((b for b in scan.beams if b.n_echoes), key=lambda b: b.time)
+        beams = sorted((b for b in scan.beams if keep_empty or b.n_echoes), key=lambda b: b.time)
         for i, b in enumerate(beams):
             try:
                 tmpl = index[(b.time, b.bmnum, b.channel)]
             except KeyError:
                 raise KeyError(f"no source record for beam {b.bmnum} at {b.time}") from None
-            rec = beam_to_record(b, tmpl)
-            scan_dtype = np.asarray(tmpl.get("scan", 0)).dtype
-            rec["scan"] = scan_dtype.type(1 if i == 0 else 0)
+            rec = beam_to_record(b, tmpl) if b.n_echoes else dict(tmpl)
+            if not keep_empty:
+                scan_dtype = np.asarray(tmpl.get("scan", 0)).dtype
+                rec["scan"] = scan_dtype.type(1 if i == 0 else 0)
             rec["origin.command"] = command or "amgeo_sd"
             rec["origin.time"] = now
-            rec["amgeo.model"] = "median"
+            rec["amgeo.model"] = model
             rec["amgeo.version"] = __version__
             out.append(rec)
     out.sort(key=_record_time)

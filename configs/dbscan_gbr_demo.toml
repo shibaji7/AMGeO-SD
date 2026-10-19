@@ -1,0 +1,13 @@
+# DBSCAN + Gaussian mixture demo: one hour of Goose Bay (gbr, high-latitude) from tests/data.
+# Run:  make dbscan CONFIG=configs/dbscan_gbr_demo.toml
+[run]
+rad    = "gbr"
+start  = 2025-02-08T03:00:00
+end    = 2025-02-08T04:00:00
+sim_id = "demo-dbscan"
+
+[input]
+paths = ["tests/data/gbr_20250208"]
+
+[dbscan]
+gmm = "A"      # also split every beam with a Gaussian mixture before DBSCAN

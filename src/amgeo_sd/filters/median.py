@@ -23,7 +23,7 @@ Differences from the legacy code, all deliberate:
 * the KDE jitter uses a seeded ``numpy.random.Generator`` per scan instead of the global state, so
   results do not depend on process scheduling;
 * a failed Beta fit gives ``gflg_kde = 2`` (undetermined) instead of raising;
-* ``v_e`` of filtered beams is NaN (the legacy code left it empty).
+* ``v_e`` of filtered beams is NaN in memory (the legacy code left it empty); the fitacf++ DMAP writer stores ``v_mad`` there.
 """
 
 from __future__ import annotations

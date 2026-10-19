@@ -5,24 +5,21 @@ replacement yet**; everything already ported is documented in [USAGE.md](USAGE.m
 Every remaining item gets a new home under `src/amgeo_sd/`, a `make` target where it is a workflow, a TOML
 section, and a test on the real data in `tests/data` (bks = mid-latitude, gbr = high-latitude, 2025-02-08).
 
-## 1. Clustering models (the two other fitacf++ workflows)
+## 1. Beam-gate-time clustering model (the last fitacf++ workflow)
 
 | Legacy | New home | Notes |
 |---|---|---|
 | `sd/clustering_algo.py` `BeamGateTimeFilter`, `BeamGateFilter`, `ScatterTypeDetection` (+ `fitacf_amgeo_cluster.py`): beam-gate DBSCAN per 30-min window, KDE ionospheric/ground classification, cluster tracking in time | `clustering/beam_gate.py`, `clustering/scatter_type.py` -> `make cluster` | needs `utils.smooth` (fix the `numpy.ones` / `eval` bug) |
-| `sd/clustering_algo.py` `DBScan` (+ `fitacf_amgeo_dbcluster.py`): per-beam DBSCAN (+ optional Box-Cox GMM) in (gate, scan) space | `clustering/dbscan.py` -> `make dbscan` | `-gmm`, `-nc`, `-cov`, `-gth`, `-tb_mult` options |
-| `utils.ribiero_gs_flg`, `_run_riberio_threshold`, `_run_riberio_threshold_on_rad` | `scatter.py` | Ribiero et al. (2011) cluster rule -> `cluster_tag`, `gflg_ribiero` |
 | `Beam.gs_estimation` (Sundeen / Blanchard 2009 criteria) | `scatter.py` | |
-| `BeamGateTimeFilter.repackage_to_netcdf`, `save_data`, per-cluster `.h5`, `beam_gate_clusters.csv`, `beam_gate_time_tracker.json` | `export.py` additions | the median model's `.nc` / `.fitacf.pl.bz2` writers already accept `cluster_tag`, `gflg_ribiero` |
-| `analysis.py` `Simulate` options not yet exposed | - | none left; kept here only to flag that `-gct` / `-gft` (flag-type selection) were dropped on purpose |
+| `BeamGateTimeFilter.repackage_to_netcdf`, `save_data`, per-cluster `.h5`, `beam_gate_clusters.csv`, `beam_gate_time_tracker.json` | `export.py` additions | the `.nc` / `.fitacf.pl.bz2` writers already handle `cluster_tag`, `gflg_ribiero` (used by the DBSCAN model) |
 
-Each clustering model gets its own TOML table (like `[median]`), a `params.toml` in the output folder, and
-`.nc` + `.fitacf.pl.bz2` outputs through the existing writers.
+This model gets its own TOML table (like `[median]` and `[dbscan]`), a `params.toml` in the output folder, and
+`.nc` + `.fitacf.pl.bz2` outputs through the existing writers; `make cluster`.
 
 ## 2. Plotting tools that depend on the clustering models
 
 The RTI and field-of-view plots (all three legacy RTI classes and both fan classes merged) are done. These legacy
-plot tools consume cluster records and still need porting under `src/amgeo_sd/plotting/`:
+plot tools consume the beam-gate-time model's cluster records and still need porting under `src/amgeo_sd/plotting/`:
 
 | Legacy | New home |
 |---|---|
@@ -49,8 +46,8 @@ plot tools consume cluster records and still need porting under `src/amgeo_sd/pl
 
 * **fitacf 3.0** is read by the same code as fitacf 2.5 (tested with synthetic fitacf 2.0 / 2.5 / 3.0 records), but
   there is no fitacf3 file in `tests/data`; add one radar-day to test it on real data.
-* **Reference outputs.** The median model is checked against a literal translation of the legacy loops and the
-  geometry against arrays produced by the legacy code (`tests/golden`). For the clustering models, run the legacy
+* **Reference outputs.** The median and DBSCAN models are checked against literal translations of the legacy logic and the
+  geometry against arrays produced by the legacy code (`tests/golden`). For the beam-gate-time model, run the legacy
   pipeline once in a Python 3.7 environment built from `_bkp/amgeo.yml` on the bks / gbr test days, store its
   `.nc` outputs as golden files and compare stage by stage. This needs the old environment.
 * **Archive layout.** `AMGEO_SD_DATA` lookups assume `<year>/<ftype>/<rad>/<YYYYMMDD>.*`; untested against a real archive.
@@ -59,7 +56,7 @@ plot tools consume cluster records and still need porting under `src/amgeo_sd/pl
 
 * `utils.smooth`: undefined `numpy.ones`, window chosen with `eval()`.
 * `BeamGateFilter.doFilter`: `DataFrame.append` (removed in pandas 2); `stats.median_absolute_deviation` (removed in SciPy 1.9; use `median_abs_deviation`).
-* `rti.py` runs its whole analysis at import time; `fitacf_amgeo_dbcluster` hard-codes 2015-03-17 FoV times.
+* `rti.py` runs its whole analysis at import time.
 * Shell-outs (`os.system("mkdir -p")`, `gzip`, `rm -rf {out_dir}*`) and cwd-relative paths in the clustering code.
 * `plt.style.use(["science", "ieee"])` needs SciencePlots (not installed); `descartes` is unmaintained.
 * `sd_carto.get_aacgm_geom` was never defined, so AACGM coastlines never worked; the new FoV plot converts them itself.

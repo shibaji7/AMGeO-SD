@@ -8,6 +8,8 @@ A config file has one table per topic; see ``configs/default.toml`` for every ke
     [run]      rad, start, end, sim_id, out, jobs
     [input]    paths, root, ftype
     [median]   thresh, pth, lth, uth, kde, cluster, eps, min_samples
+    [dbscan]   eps, eps_g, eps_s, min_samples, tb_mult, velocity_threshold, min_gate, gmm, n_clusters, cov, n_data_th
+    [geometry] backend, altitude
     [output]   netcdf, fitacf
     [plot]     inputs, compare, rad, beam, start, end, time, params, flag, coords, projection, ...
 """
@@ -61,6 +63,31 @@ class Median:
 
 
 @dataclass
+class Dbscan:
+    """``[dbscan]``: parameters of the DBSCAN / Gaussian-mixture clustering model."""
+
+    eps: float = 2.0  # DBSCAN radius in (gate / eps_g, scan / eps_s) units (legacy default: 1)
+    eps_g: float = 1.0  # range-gate scale
+    eps_s: float = 1.0  # scan-number scale
+    min_samples: int = 8  # DBSCAN core-point size (legacy default: 5)
+    tb_mult: int = 10  # min_samples multiplier on the themis special beam
+    velocity_threshold: float = 25.0  # m/s, Ribiero rule
+    min_gate: int = 7  # echoes in gates below this stay unclassified
+    gmm: str = ""  # Gaussian-mixture step: "" none, "A" all beams, "T" themis beam, "3,7" listed beams
+    n_clusters: int = 5  # mixture components
+    cov: str = "full"  # mixture covariance type: full, tied, diag, spherical
+    n_data_th: int = 100  # beams with fewer echoes skip the mixture
+
+
+@dataclass
+class Geometry:
+    """``[geometry]``: how range cells are located on the map and in the NetCDF file."""
+
+    backend: str = "legacy"  # "legacy" (original CalcFov) or "pydarn" (pydarn 4)
+    altitude: float = 300.0  # km
+
+
+@dataclass
 class Output:
     """``[output]``: which products to write."""
 
@@ -100,8 +127,31 @@ class Settings:
     run: Run = field(default_factory=Run)
     input: Input = field(default_factory=Input)
     median: Median = field(default_factory=Median)
+    dbscan: Dbscan = field(default_factory=Dbscan)
+    geometry: Geometry = field(default_factory=Geometry)
     output: Output = field(default_factory=Output)
     plot: Plot = field(default_factory=Plot)
+
+    def _validate_run(self) -> None:
+        missing = [k for k in ("rad", "start", "end") if getattr(self.run, k) is None]
+        if missing:
+            raise ValueError(f"missing required setting(s) in [run]: {', '.join(missing)}")
+        if self.run.end < self.run.start:
+            raise ValueError("[run] end is before start")
+
+    def _validate_dbscan(self) -> None:
+        d = self.dbscan
+        if min(d.eps, d.eps_g, d.eps_s) <= 0:
+            raise ValueError("[dbscan] eps, eps_g and eps_s must be positive")
+        if d.min_samples < 1 or d.tb_mult < 1 or d.n_clusters < 1 or d.n_data_th < 1:
+            raise ValueError("[dbscan] min_samples, tb_mult, n_clusters and n_data_th must be at least 1")
+        if d.cov not in ("full", "tied", "diag", "spherical"):
+            raise ValueError("[dbscan] cov must be full, tied, diag or spherical")
+        spec = d.gmm.strip().upper()
+        if spec and "A" not in spec and "T" not in spec and not all(x.strip().isdigit() for x in spec.split(",")):
+            raise ValueError("[dbscan] gmm must be empty, 'A', 'T' or a comma-separated list of beam numbers")
+        if not (self.output.netcdf or self.output.fitacf):
+            raise ValueError("[output] enable at least one of netcdf / fitacf")
 
     def to_dict(self) -> dict[str, dict[str, Any]]:
         """Plain nested dict, one entry per table."""
@@ -109,6 +159,16 @@ class Settings:
 
     def validate(self, require: str = "median") -> Settings:
         """Check the values; ``require`` is the workflow the settings are for: ``"median"`` or ``"plot"``."""
+        from amgeo_sd.geo import BACKENDS
+
+        if self.geometry.backend not in BACKENDS:
+            raise ValueError(f"[geometry] backend must be one of {BACKENDS}, not {self.geometry.backend!r}")
+        if not 0 < self.geometry.altitude < 2000:
+            raise ValueError("[geometry] altitude must be in (0, 2000) km")
+        if require == "dbscan":
+            self._validate_run()
+            self._validate_dbscan()
+            return self
         if require == "plot":
             if not self.plot.inputs:
                 raise ValueError("[plot] inputs is empty")
@@ -117,11 +177,7 @@ class Settings:
             if self.plot.projection not in ("auto", "polar", "ortho"):
                 raise ValueError("[plot] projection must be auto, polar or ortho")
             return self
-        missing = [k for k in ("rad", "start", "end") if getattr(self.run, k) is None]
-        if missing:
-            raise ValueError(f"missing required setting(s) in [run]: {', '.join(missing)}")
-        if self.run.end < self.run.start:
-            raise ValueError("[run] end is before start")
+        self._validate_run()
         if not 0 < self.median.thresh <= 1:
             raise ValueError("[median] thresh must be in (0, 1]")
         if not 0 <= self.median.lth < self.median.uth <= 1:
@@ -199,6 +255,8 @@ TABLE_DOCS = {
     "run": "What to process and where results go.",
     "input": "Where the fitacf data come from.",
     "median": "Median-filter model parameters.",
+    "dbscan": "DBSCAN / Gaussian-mixture clustering model parameters.",
+    "geometry": "Range-cell geolocation (NetCDF gdlat/gdlon/gdazm and the maps).",
     "output": "Which products to write.",
     "plot": "Figures from fitacf or fitacf++ data.",
 }
@@ -225,6 +283,23 @@ FIELD_DOCS = {
         "cluster": "DBSCAN labels per scan -> clabel",
         "eps": "DBSCAN radius in (beam, gate) units",
         "min_samples": "DBSCAN core-point size",
+    },
+    "dbscan": {
+        "eps": "DBSCAN radius in (gate / eps_g, scan / eps_s) units",
+        "eps_g": "range-gate scale",
+        "eps_s": "scan-number scale",
+        "min_samples": "DBSCAN core-point size",
+        "tb_mult": "min_samples multiplier on the themis special beam",
+        "velocity_threshold": "m/s; Ribiero rule: echoes faster than this count as high-velocity",
+        "min_gate": "echoes in gates below this stay unclassified (-1)",
+        "gmm": 'Gaussian-mixture step: "" none, "A" all beams, "T" themis beam, "3,7" listed beams',
+        "n_clusters": "mixture components",
+        "cov": "mixture covariance type: full, tied, diag or spherical",
+        "n_data_th": "beams with fewer echoes skip the mixture",
+    },
+    "geometry": {
+        "backend": '"legacy" = original CalcFov (reproduces old results); "pydarn" = pydarn 4 (fixed cell height)',
+        "altitude": "cell altitude in km",
     },
     "output": {
         "netcdf": "<rad>_<start>_<end>.fitacf++.nc",
@@ -288,7 +363,7 @@ def dump_settings_toml(
     title: str = "AMGeO-SD run parameters",
     provenance: dict[str, Any] | None = None,
     result: dict[str, Any] | None = None,
-    tables: Sequence[str] = ("run", "input", "median", "output"),
+    tables: Sequence[str] = ("run", "input", "median", "geometry", "output"),
 ) -> str:
     """Annotated TOML of ``settings``: same layout as the input files, so it can be fed back with ``--config``.
 

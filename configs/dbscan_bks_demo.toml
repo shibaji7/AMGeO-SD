@@ -1,0 +1,10 @@
+# DBSCAN demo: one hour of Blackstone (bks, mid-latitude) from tests/data.
+# Run:  make dbscan CONFIG=configs/dbscan_bks_demo.toml
+[run]
+rad    = "bks"
+start  = 2025-02-08T03:00:00
+end    = 2025-02-08T04:00:00
+sim_id = "demo-dbscan"
+
+[input]
+paths = ["tests/data/bks_20250208"]

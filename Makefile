@@ -24,6 +24,8 @@ LTH    ?=
 UTH    ?=
 EXTRA  ?=
 COMPARE ?=
+GEOMETRY ?=
+GMM    ?=
 BEAM   ?=
 TIME   ?=
 PARAMS ?=
@@ -31,7 +33,7 @@ COORDS ?=
 FIGDIR ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help env env-update env-remove install data-unpack data-info data-clean median median-demo out-clean plot-rti plot-fov plot-demo config-show lint format test test-unit test-real test-cov clean
+.PHONY: help env env-update env-remove install data-unpack data-info data-clean median median-demo dbscan dbscan-demo out-clean plot-rti plot-fov plot-demo config-show lint format test test-unit test-real test-cov clean
 
 ##@ Help
 help: ## Show this help
@@ -71,7 +73,15 @@ data-clean: ## Delete unpacked tests/data/<name>/ folders that can be restored f
 ##@ Pipelines
 median: ## fitacf -> fitacf++ (.nc + .fitacf.pl.bz2). CONFIG=file.toml and/or RAD START END [INPUT OUT SID JOBS THRESH PTH LTH UTH EXTRA]
 	@test -n "$(CONFIG)" -o \( -n "$(RAD)" -a -n "$(START)" -a -n "$(END)" \) || { echo "usage: make median CONFIG=configs/median_bks_demo.toml   or   make median RAD=bks START=2025-02-08T03:00 END=2025-02-08T04:00 INPUT=tests/data/bks_20250208"; exit 2; }
-	$(PY) -m amgeo_sd median $(if $(CONFIG),-c $(CONFIG)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(if $(INPUT),-i $(INPUT)) $(if $(OUT),-o $(OUT)) $(if $(SID),-sid $(SID)) $(if $(JOBS),-j $(JOBS)) $(if $(THRESH),-th $(THRESH)) $(if $(PTH),-pth $(PTH)) $(if $(LTH),-lth $(LTH)) $(if $(UTH),-uth $(UTH)) $(EXTRA)
+	$(PY) -m amgeo_sd median $(if $(CONFIG),-c $(CONFIG)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(if $(INPUT),-i $(INPUT)) $(if $(OUT),-o $(OUT)) $(if $(SID),-sid $(SID)) $(if $(JOBS),-j $(JOBS)) $(if $(THRESH),-th $(THRESH)) $(if $(PTH),-pth $(PTH)) $(if $(LTH),-lth $(LTH)) $(if $(UTH),-uth $(UTH)) $(if $(GEOMETRY),--geometry $(GEOMETRY)) $(EXTRA)
+
+dbscan: ## DBSCAN/GMM model: label raw echoes with clusters + Ribiero flag -> fitacf++ (.nc + .fitacf.pl.bz2). CONFIG and/or RAD START END [INPUT OUT SID GMM GEOMETRY EXTRA]
+	@test -n "$(CONFIG)" -o \( -n "$(RAD)" -a -n "$(START)" -a -n "$(END)" \) || { echo "usage: make dbscan CONFIG=configs/dbscan_bks_demo.toml   or   make dbscan RAD=bks START=2025-02-08T03:00 END=2025-02-08T04:00 INPUT=tests/data/bks_20250208 [GMM=A]"; exit 2; }
+	$(PY) -m amgeo_sd dbscan $(if $(CONFIG),-c $(CONFIG)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(if $(INPUT),-i $(INPUT)) $(if $(OUT),-o $(OUT)) $(if $(SID),-sid $(SID)) $(if $(GMM),-gmm $(GMM)) $(if $(GEOMETRY),--geometry $(GEOMETRY)) $(EXTRA)
+
+dbscan-demo: ## Run `dbscan` from configs/dbscan_{bks,gbr}_demo.toml (1 h each, tests/data) into data/outputs/demo-dbscan/
+	$(MAKE) --no-print-directory dbscan CONFIG=configs/dbscan_bks_demo.toml
+	$(MAKE) --no-print-directory dbscan CONFIG=configs/dbscan_gbr_demo.toml
 
 median-demo: ## Run `median` from configs/median_{bks,gbr}_demo.toml (1 h each, tests/data) into data/outputs/demo/
 	$(MAKE) --no-print-directory median CONFIG=configs/median_bks_demo.toml
@@ -83,7 +93,7 @@ config-show: ## Print the resolved median parameters (CONFIG=... plus overrides)
 out-clean: ## Delete pipeline results in OUT (default data/outputs)
 	@o="$(if $(OUT),$(OUT),data/outputs)"; case "$$o" in /|.|..) echo "refusing to remove '$$o'"; exit 2;; esac; rm -rf "$$o"
 
-PLOT_FLAGS = $(if $(CONFIG),-c $(CONFIG)) $(if $(INPUT),-i $(INPUT)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(if $(PARAMS),-p $(PARAMS)) $(if $(FIGDIR),-o $(FIGDIR)) $(EXTRA)
+PLOT_FLAGS = $(if $(GEOMETRY),--geometry $(GEOMETRY)) $(if $(CONFIG),-c $(CONFIG)) $(if $(INPUT),-i $(INPUT)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(if $(PARAMS),-p $(PARAMS)) $(if $(FIGDIR),-o $(FIGDIR)) $(EXTRA)
 
 plot-rti: ## RTI of one beam from fitacf or fitacf++ files. CONFIG=file.toml and/or INPUT BEAM [COMPARE START END PARAMS FIGDIR EXTRA]
 	@test -n "$(CONFIG)" -o -n "$(INPUT)" || { echo "usage: make plot-rti INPUT=data/outputs/demo/bks/x.fitacf++.nc BEAM=12 [COMPARE=raw_dir PARAMS='v gflg' START=... END=...]   or   CONFIG=configs/plot_rti_demo.toml"; exit 2; }

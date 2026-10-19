@@ -175,6 +175,10 @@ def test_dmap_output_keeps_standard_fitacf_fields_and_scan_structure(bks_run):
     recs = read_fitacf_file(res["fitacf_file"])
     assert {"pwr0", "ltab", "qflg", "elv", "origin.command", "amgeo.model", "v_mad"} <= set(recs[0])
     assert recs[0]["amgeo.model"] == "median"
+    echoes = [r for r in recs if len(r["slist"])]
+    for r in echoes:  # nothing NaN in the fields tools select or weight on; v_e carries v_mad
+        assert np.isfinite(r["v_e"]).all() and (r["qflg"] == 1).all()
+        np.testing.assert_array_equal(r["v_e"], r["v_mad"])
     scans, meta = load_scans([res["fitacf_file"]])
     assert len(scans) == res["n_scans"]
     assert all(len({b.bmnum for b in s.beams}) == len(s.beams) for s in scans)

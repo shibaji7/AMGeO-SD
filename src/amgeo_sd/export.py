@@ -50,6 +50,18 @@ EXTRA_FIELDS = (
         "Median absolute deviation after applying the median filter",
     ),
     ("clabel", "Cluster label", "", "DBSCAN cluster label in (beam, gate) space, -1 is noise"),
+    (
+        "cluster_tag",
+        "Cluster tag",
+        "",
+        "DBSCAN cluster label of the echo within its beam (-1 is noise); unique only per beam",
+    ),
+    (
+        "gflg_ribiero",
+        "Ground scatter flag (Ribiero)",
+        "",
+        "Cluster ground scatter flag: -1 unclassified, 0 ionospheric, 1 ground",
+    ),
 )
 #: Per-beam scalars: (variable, Beam attribute, dtype, long_name, units, description).
 BEAM_FIELDS = (

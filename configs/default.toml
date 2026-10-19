@@ -27,6 +27,25 @@ cluster     = true                # DBSCAN labels per scan -> clabel
 eps         = 2.0                   # DBSCAN radius in (beam, gate) units
 min_samples = 5                   # DBSCAN core-point size
 
+# DBSCAN / Gaussian-mixture model (`make dbscan`): clusters the raw echoes of every beam in (gate, scan) space and
+# classifies each cluster as ionospheric / ground scatter (Ribiero rule). Labels cluster_tag are unique only within a beam.
+[dbscan]
+eps                = 2.0          # DBSCAN radius in (gate / eps_g, scan / eps_s) units (legacy default 1.0)
+eps_g              = 1.0          # range-gate scale
+eps_s              = 1.0          # scan-number scale
+min_samples        = 8            # DBSCAN core-point size (legacy default 5)
+tb_mult            = 10           # min_samples multiplier on the themis special beam
+velocity_threshold = 25.0         # m/s; Ribiero rule: echoes faster than this count as high-velocity
+min_gate           = 7            # echoes in gates below this stay unclassified (-1)
+gmm                = ""           # Gaussian-mixture step: "" none, "A" all beams, "T" themis beam, "3,7" listed beams
+n_clusters         = 5            # mixture components
+cov                = "full"       # mixture covariance type: full, tied, diag or spherical
+n_data_th          = 100          # beams with fewer echoes skip the mixture
+
+[geometry]
+backend  = "legacy"               # "legacy" = original CalcFov (reproduces the old results); "pydarn" = pydarn 4 (fixed cell height, ~20 km different)
+altitude = 300.0                  # km
+
 [output]
 netcdf = true                     # <rad>_<start>_<end>.fitacf++.nc
 fitacf = true                     # <YYYYMMDD.HHMM.SS>.<rad>.fitacf.pl.bz2 (DMAP with extra fields)
