@@ -1,4 +1,5 @@
 import datetime as dt
+import re
 from pathlib import Path
 
 import pytest
@@ -96,4 +97,19 @@ def test_geometry_table(tmp_path):
     assert "[geometry]" in dump_settings_toml(s) and "pydarn" in dump_settings_toml(s)
     f.write_text(f.read_text().replace("pydarn", "davitpy"))
     with pytest.raises(ValueError, match="backend"):
+        load_settings(f)
+
+
+def test_median_defaults_and_edge_gates_validation(tmp_path):
+    d = Settings().median
+    assert (d.thresh, d.edge_gates) == (0.6, "legacy")
+    f = tmp_path / "e.toml"
+    f.write_text(
+        '[run]\nrad = "bks"\nstart = 2025-02-08T03:00:00\nend = 2025-02-08T04:00:00\n[median]\nedge_gates = "missing"\nthresh = 0.7\n'
+    )
+    s = load_settings(f)
+    assert (s.median.edge_gates, s.median.thresh) == ("missing", 0.7)
+    assert re.search(r'edge_gates\s*=\s*"missing"', dump_settings_toml(s))
+    f.write_text(f.read_text().replace("missing", "clip"))
+    with pytest.raises(ValueError, match="edge_gates"):
         load_settings(f)

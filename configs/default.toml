@@ -18,14 +18,15 @@ root  = ""                        # archive root laid out <year>/<ftype>/<rad>/;
 ftype = "fitacf"                  # "fitacf" or "fitacf3" (archive lookup only)
 
 [median]
-thresh      = 0.7                 # min fraction of the 3x3x3 neighbour weight that must hold an echo
+thresh      = 0.6                 # min fraction of the 3x3x3 neighbour weight that must hold an echo (legacy default 0.7)
 pth         = 0.25                # Beta-distribution cut for the KDE ground-scatter flag
 lth         = 0.2                 # P(ground) <= lth  -> ionospheric (0)
 uth         = 0.8                 # P(ground) >= uth  -> ground (1); in between -> undetermined (2)
 kde         = true                # compute gflg_kde (the slow Beta fit); false -> NaN
 cluster     = true                # DBSCAN labels per scan -> clabel
-eps         = 2.0                   # DBSCAN radius in (beam, gate) units
+eps         = 2.0                 # DBSCAN radius in (beam, gate) units
 min_samples = 5                   # DBSCAN core-point size
+edge_gates  = "legacy"            # gates outside the radar range: "legacy" = count as empty neighbours, "missing" = not counted
 
 # DBSCAN / Gaussian-mixture model (`make dbscan`): clusters the raw echoes of every beam in (gate, scan) space and
 # classifies each cluster as ionospheric / ground scatter (Ribiero rule). Labels cluster_tag are unique only within a beam.

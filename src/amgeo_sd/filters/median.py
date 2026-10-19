@@ -3,11 +3,17 @@
 Port of the legacy ``sd/boxcar_filter.py`` (``Filter``). For every range cell of the *middle*
 scan of three consecutive scans, the 27 neighbouring cells (previous/current/next scan, beam-1..+1,
 gate-1..+1) are weighted with ``DEFAULT_WEIGHTS``. The cell survives if the weight of neighbours that
-hold an echo, divided by the weight of all neighbours that exist, is at least ``thresh``. Survivors get
+hold an echo, divided by the weight of all neighbours that exist, is at least ``thresh`` (default 0.6;
+the legacy code used 0.7, which on bks and gbr removed 16-30% of the echoes of large, persistent structures).
+Neighbours in beams or scans that do not exist are never counted; neighbours in gates outside the radar's
+range (below gate 0, above the last gate) are counted as *empty* (``edge_gates="legacy"``, which makes the first
+and last gate hard to keep) or as non-existent (``edge_gates="missing"``, like missing beams). Survivors get
 
 * ``v``, ``w_l``, ``p_l``: weighted medians (each neighbour value repeated ``weight`` times),
 * ``v_mad``: median absolute deviation of ``v``,
-* ``gflg``: ``0`` (ionospheric) if ``w_l > -3 v + 90`` else ``1`` (ground),
+* ``gflg``: ``0`` (ionospheric) if ``w_l > -3 v + 90`` else ``1`` (ground). This is the legacy rule; it labels almost
+  everything ground scatter and is **not recommended**, use ``gflg_kde`` / ``gflg_conv`` (or the Ribiero flag of the
+  DBSCAN model),
 * ``gflg_conv``: weighted fraction of ground-scatter neighbours (over *all* existing neighbour
   weight) mapped to ``0`` (<= ``lth``), ``1`` (>= ``uth``) or ``2`` (undetermined),
 * ``gflg_kde``: the neighbours' flags, jittered into (0, 1), are fitted with a Beta distribution and
@@ -41,6 +47,9 @@ from sklearn.cluster import DBSCAN
 from amgeo_sd.models import Scan
 
 _EPOCH = dt.datetime(1970, 1, 1)
+
+#: How gates outside the radar's range count as neighbours: "legacy" = empty, "missing" = not counted.
+EDGE_GATES = ("legacy", "missing")
 
 #: Weights over (scan, beam, gate); the centre cell has weight 5.
 DEFAULT_WEIGHTS = np.array(
@@ -130,7 +139,7 @@ class MedianFilter:
     Parameters
     ----------
     thresh : float
-        Minimum fraction of neighbour weight that must hold an echo (default 0.7).
+        Minimum fraction of neighbour weight that must hold an echo (default 0.6).
     weights : ndarray, shape (3, 3, 3)
         Weights over (scan, beam, gate); integers.
     pbnd : (float, float)
@@ -143,11 +152,15 @@ class MedianFilter:
         Run DBSCAN (``eps``, ``min_samples``) on each filtered scan to fill ``clabel``.
     seed : int
         Seed for the KDE jitter.
+    edge_gates : ``"legacy"`` or ``"missing"``
+        Treatment of neighbour gates outside ``0..nrang-1``: ``"legacy"`` counts them as empty cells, which
+        penalises the first and last gate (a cell there can reach at most 73% of the weight, so it is dropped at any
+        threshold above 0.73); ``"missing"`` leaves them out of the weight like missing beams.
     """
 
     def __init__(
         self,
-        thresh: float = 0.7,
+        thresh: float = 0.6,
         weights: np.ndarray | None = None,
         pbnd: Sequence[float] = (1.0 / 5.0, 4.0 / 5.0),
         pth: float = 0.25,
@@ -156,7 +169,11 @@ class MedianFilter:
         eps: float = 2,
         min_samples: int = 5,
         seed: int = 0,
+        edge_gates: str = "legacy",
     ):
+        if edge_gates not in EDGE_GATES:
+            raise ValueError(f"edge_gates must be one of {EDGE_GATES}, not {edge_gates!r}")
+        self.edge_gates = edge_gates
         self.thresh = thresh
         self.weights = np.asarray(DEFAULT_WEIGHTS if weights is None else weights, dtype=int)
         if self.weights.shape != (3, 3, 3):
@@ -192,7 +209,9 @@ class MedianFilter:
         for beam in sorted(centre.beams, key=lambda b: b.bmnum):
             b = beam.bmnum
             gates = np.arange(beam.nrang)
-            keep = gates[(pts[b, : beam.nrang] / tot[b]) >= self.thresh]
+            tot_b = tot[b] if self.edge_gates == "legacy" else self._gate_totals(exists, b, beam.nrang)
+            tot_cells = np.broadcast_to(tot_b, (beam.nrang,))
+            keep = gates[(pts[b, : beam.nrang] / tot_cells) >= self.thresh]
             if keep.size == 0:
                 continue
             nbr = {k: self._gather(fields[k], b, keep) for k in ("v", "w_l", "p_l", "gflg")}
@@ -202,7 +221,7 @@ class MedianFilter:
             gflg = np.where(w_l > -3.0 * v + 90.0, 0, 1).astype(np.int8)
             g = nbr["gflg"]  # (N, 27), NaN where the neighbour has no echo
             ground_weight = np.nansum(g * w_flat, axis=1)
-            conv = np.array([conv_flag(gw, tot[b], self.pbnd) for gw in ground_weight])
+            conv = np.array([conv_flag(gw, t, self.pbnd) for gw, t in zip(ground_weight, tot_cells[keep], strict=True)])
             if self.kde:
                 g_rep = g[:, self._rep]
                 kde = np.array([kde_flag(row[~np.isnan(row)], self.pbnd, self.pth, rng) for row in g_rep])
@@ -270,6 +289,16 @@ class MedianFilter:
         for j, k in itertools.product(range(3), repeat=2):
             tot += self.weights[j, k].sum() * padded_exists[j, k : k + nb]
         return pts, tot
+
+    def _gate_totals(self, exists: np.ndarray, b: int, nrang: int) -> np.ndarray:
+        """Weight of existing neighbours of every gate of beam ``b`` when gates outside ``0..nrang-1`` do not count."""
+        padded_exists = np.pad(exists, ((0, 0), (1, 1)))
+        valid = np.zeros(nrang + 2)
+        valid[1 : nrang + 1] = 1.0
+        tot = np.zeros(nrang)
+        for j, k, n in itertools.product(range(3), repeat=3):
+            tot += self.weights[j, k, n] * padded_exists[j, b + k] * valid[n : n + nrang]
+        return tot
 
     @staticmethod
     def _gather(field: np.ndarray, b: int, gates: np.ndarray) -> np.ndarray:

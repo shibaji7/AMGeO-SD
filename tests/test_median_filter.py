@@ -80,6 +80,47 @@ def test_conv_flag_follows_neighbour_ground_fraction():
     assert (mid.extra["gflg_conv"][1:-1] == 2).all() and np.isnan(mid.extra["gflg_kde"]).all()
 
 
+def edge_block_scans(gates):
+    return [
+        mk_scan(i, [mk_beam(b, T0 + dt.timedelta(minutes=i, seconds=b), gates, v=10.0) for b in (3, 4, 5)])
+        for i in range(3)
+    ]
+
+
+def test_edge_gates_option_first_and_last_gate():
+    """A block touching gate 0 and the last gate: the legacy rule can give those cells at most 40/55 = 73% of the weight."""
+    nrang = 30
+    for gates, edge_cells in ((range(0, 5), [0]), (range(nrang - 5, nrang), [nrang - 1])):
+        scans = edge_block_scans(gates)
+        for thresh, legacy_keeps in ((0.7, True), (0.8, False)):
+            got = {}
+            for mode in ("legacy", "missing"):
+                out = MedianFilter(thresh=thresh, edge_gates=mode, cluster=False, kde=False).filter_window(scans)
+                got[mode] = set(out.beams[1].slist.tolist())  # the middle beam has all neighbours
+            assert set(edge_cells) <= got["missing"], "missing mode keeps the cell at the radar's range edge"
+            assert (set(edge_cells) <= got["legacy"]) is legacy_keeps
+            assert got["legacy"] <= got["missing"]
+
+
+def test_edge_gates_changes_conv_denominator_at_the_edge_only():
+    scans = edge_block_scans(range(0, 6))
+    for s in scans:
+        for b in s.beams:
+            b.gflg[:] = 1  # all neighbours ground scatter
+    a = MedianFilter(thresh=0.6, edge_gates="legacy", cluster=False, kde=False).filter_window(scans).beams[1]
+    b = MedianFilter(thresh=0.6, edge_gates="missing", cluster=False, kde=False).filter_window(scans).beams[1]
+    assert a.slist.tolist() == b.slist.tolist()
+    assert a.extra["gflg_conv"][0] == 2.0 and b.extra["gflg_conv"][0] == 1.0  # 73% (undetermined) vs 100% (ground)
+    np.testing.assert_array_equal(a.extra["gflg_conv"][1:-1], b.extra["gflg_conv"][1:-1])
+
+
+def test_median_filter_defaults_and_edge_gate_validation():
+    flt = MedianFilter()
+    assert (flt.thresh, flt.edge_gates) == (0.6, "legacy")
+    with pytest.raises(ValueError, match="edge_gates"):
+        MedianFilter(edge_gates="clip")
+
+
 def test_median_filter_input_validation():
     with pytest.raises(ValueError):
         MedianFilter().filter_window(block_scans()[:2])
@@ -146,18 +187,48 @@ def _as_dict(scan):
     }
 
 
+# (threshold, edge_gates): the legacy 0.7 and the new default 0.6, and the strict thresholds where the gate edge matters most
+SETTINGS = [(0.7, "legacy"), (0.6, "legacy"), (0.6, "missing"), (0.8, "missing")]
+
+
 @pytest.mark.realdata
+@pytest.mark.parametrize("thresh,edge", SETTINGS)
 @pytest.mark.parametrize("idx", [3, 7])
-def test_vectorised_equals_legacy_loops(real_scans, idx):
+def test_vectorised_equals_legacy_loops(real_scans, idx, thresh, edge):
     for name, scans in real_scans.items():
         window = scans[idx - 1 : idx + 2]
-        got = _as_dict(MedianFilter(cluster=False).filter_window(window))
-        want = reference_filter(window)
+        got = _as_dict(MedianFilter(thresh=thresh, edge_gates=edge, cluster=False).filter_window(window))
+        want = reference_filter(window, thresh=thresh, edge_gates=edge)
         assert got.keys() == want.keys(), name
-        assert sum(len(d["slist"]) for d in want.values()) > 100, f"{name}: window too empty to be a test"
+        assert sum(len(d["slist"]) for d in want.values()) > 40, f"{name}: window too empty to be a test"
         for bm in want:
             for key, ref in want[bm].items():
                 np.testing.assert_allclose(got[bm][key], ref, rtol=0, atol=1e-9, err_msg=f"{name} beam {bm} {key}")
+
+
+@pytest.mark.realdata
+@pytest.mark.parametrize("thresh,must_gain", [(0.6, True), (0.8, False)])
+def test_missing_edge_gates_only_change_the_first_and_last_gate(real_scans, thresh, must_gain):
+    """Neighbour weights differ only for cells whose gate +-1 leaves the radar's range, so interior gates are identical
+    and the edge gates can only gain echoes."""
+    gained = 0
+    for scans in real_scans.values():
+        legacy = _as_dict(MedianFilter(thresh=thresh, edge_gates="legacy", cluster=False).filter_window(scans[2:5]))
+        missing = _as_dict(MedianFilter(thresh=thresh, edge_gates="missing", cluster=False).filter_window(scans[2:5]))
+        nrang = scans[3].beams[0].nrang
+        for bm, m in missing.items():
+            lg = legacy.get(bm, {"slist": np.empty(0, int)})
+            interior_m, interior_l = (
+                np.isin(x["slist"], range(1, nrang - 1)) if len(x["slist"]) else x["slist"] > 0 for x in (m, lg)
+            )
+            np.testing.assert_array_equal(m["slist"][interior_m], lg["slist"][interior_l])
+            for key in ("v", "w_l", "p_l", "gflg"):
+                np.testing.assert_array_equal(m[key][interior_m], lg[key][interior_l])
+            edge_m = set(m["slist"][~interior_m].tolist())
+            edge_l = set(lg["slist"][~interior_l].tolist()) if len(lg["slist"]) else set()
+            assert edge_l <= edge_m
+            gained += len(edge_m - edge_l)
+    assert gained > 0 or not must_gain, "expected some first/last-gate echoes to be recovered"
 
 
 @pytest.mark.realdata

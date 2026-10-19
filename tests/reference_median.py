@@ -14,7 +14,7 @@ from amgeo_sd.filters.median import DEFAULT_WEIGHTS, conv_flag, kde_flag
 _EPOCH = dt.datetime(1970, 1, 1)
 
 
-def reference_filter(scans, thresh=0.7, pbnd=(0.2, 0.8), pth=0.25, seed=0, kde=True):
+def reference_filter(scans, thresh=0.6, pbnd=(0.2, 0.8), pth=0.25, seed=0, kde=True, edge_gates="legacy"):
     """Return {bmnum: dict(slist, v, w_l, p_l, v_mad, gflg, gflg_conv, gflg_kde)} for scans[1]."""
     w = DEFAULT_WEIGHTS
     rng = np.random.default_rng([seed, int((scans[1].stime - _EPOCH).total_seconds() * 1e6)])
@@ -34,6 +34,8 @@ def reference_filter(scans, thresh=0.7, pbnd=(0.2, 0.8), pth=0.25, seed=0, kde=T
                                 tbm = bm
                         if tbm is None:
                             continue
+                        if edge_gates == "missing" and not (0 <= r + n < b.nrang):
+                            continue  # outside the radar's gates: not a neighbour at all
                         if r + n in tbm.slist:
                             ind = np.array(tbm.slist).tolist().index(r + n)
                             box[j][k + 1][n + 1] = (tbm.v[ind], tbm.w_l[ind], tbm.p_l[ind], tbm.gflg[ind])

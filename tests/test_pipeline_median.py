@@ -164,7 +164,12 @@ def test_pipeline_outputs(real_run):
     assert res["fitacf_file"].endswith(f"{rad}.fitacf.pl.bz2")
     # the written parameters are a valid config for the same run
     again = load_settings(out_dir / "params.toml")
-    assert again.run.rad == rad and again.run.start == dt.datetime(2025, 2, 8, 3) and again.median.thresh == 0.7
+    assert (
+        again.run.rad == rad
+        and again.run.start == dt.datetime(2025, 2, 8, 3)
+        and again.median.thresh == 0.6
+        and again.median.edge_gates == "legacy"
+    )
     text = (out_dir / "params.toml").read_text()
     assert "# " in text and "[provenance]" in text and "[result]" in text and "n_echoes" in text
 
@@ -292,3 +297,43 @@ def test_geometry_backend_switch_reaches_netcdf_params_and_plots(tmp_path, fitac
         ]
     )
     assert rc == 0 and (tmp_path / "g.png").exists()
+
+
+@pytest.mark.realdata
+def test_edge_gates_setting_reaches_params_and_netcdf(tmp_path, fitacf_files):
+    folder = DATA / "bks_20250208"
+    if not folder.is_dir():
+        pytest.skip("bks_20250208 not unpacked")
+    res = run_median_filter(
+        "bks",
+        dt.datetime(2025, 2, 8, 3, 0),
+        dt.datetime(2025, 2, 8, 3, 8),
+        files=sorted(folder.glob("*.bz2")),
+        out_base=tmp_path,
+        sim_id="E",
+        kde=False,
+        write_fitacf=False,
+        edge_gates="missing",
+        argv=["t"],
+    )
+    ds = xr.open_dataset(res["nc_file"])
+    assert ds.attrs["edge_gates"] == "missing" and ds.attrs["recommended_flags"] == "gflg_kde, gflg_conv"
+    assert "legacy v-w rule" in ds.attrs["description"] or "legacy v-w rule" in ds.attrs["description"].replace(
+        "\n", " "
+    )
+    assert load_settings(Path(res["out_dir"]) / "params.toml").median.edge_gates == "missing"
+    rc = main(
+        [
+            "median",
+            "--print-config",
+            "-r",
+            "bks",
+            "-s",
+            "2025-02-08T03:00",
+            "-e",
+            "2025-02-08T03:08",
+            "--edge-gates",
+            "missing",
+        ]
+    )
+    assert rc == 0

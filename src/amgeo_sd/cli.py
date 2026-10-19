@@ -73,6 +73,7 @@ def cmd_median(args: argparse.Namespace) -> int:
             cluster=args.cluster,
             eps=args.eps,
             min_samples=args.min_samples,
+            edge_gates=args.edge_gates,
         ),
         "geometry": dict(backend=args.geometry, altitude=args.altitude),
         "output": dict(netcdf=args.netcdf, fitacf=args.fitacf),
@@ -193,7 +194,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     m.add_argument("--root", help="archive root laid out <year>/<ftype>/<rad>/ (default $AMGEO_SD_DATA)")
     m.add_argument("--ftype", help="fitacf or fitacf3 (archive lookup only)")
-    m.add_argument("-th", "--thresh", type=float, help="neighbour-weight threshold (default 0.7)")
+    m.add_argument(
+        "-th", "--thresh", type=float, help="neighbour-weight threshold (default 0.6; the legacy code used 0.7)"
+    )
+    m.add_argument(
+        "--edge-gates",
+        choices=["legacy", "missing"],
+        help="gates outside the radar range count as empty (legacy, default) or are not counted (missing)",
+    )
     m.add_argument("-pth", "--pth", type=float, help="Beta cut for the KDE flag (default 0.25)")
     m.add_argument("-lth", "--lth", type=float, help="lower probability bound: ionospheric (default 0.2)")
     m.add_argument("-uth", "--uth", type=float, help="upper probability bound: ground (default 0.8)")

@@ -29,7 +29,7 @@ Precedence: built-in defaults < TOML file < command-line / make variables. Unkno
 ```toml
 [run]     rad, start, end, sim_id, out, jobs
 [input]   paths, root, ftype
-[median]  thresh, pth, lth, uth, kde, cluster, eps, min_samples
+[median]  thresh, pth, lth, uth, kde, cluster, eps, min_samples, edge_gates
 [dbscan]  eps, eps_g, eps_s, min_samples, tb_mult, velocity_threshold, min_gate, gmm, n_clusters, cov, n_data_th
 [geometry] backend, altitude
 [output]  netcdf, fitacf
@@ -53,15 +53,37 @@ an archive `<root>/<year>/<ftype>/<rad>/<YYYYMMDD>.*` (`[input] root` or `$AMGEO
 
 Algorithm (`amgeo_sd.filters.MedianFilter`): for every cell of the middle one of three consecutive scans, the 27 neighbours
 (scan -1..+1, beam -1..+1, gate -1..+1) are weighted by `[[1,2,1],[2,3,2],[1,2,1]] / [[2,3,2],[3,5,3],[2,3,2]] / ...`. The cell
-survives if occupied-neighbour weight / existing-neighbour weight >= `thresh`; survivors get weighted medians of `v w_l p_l`, `v_mad`
-and the flags
+survives if occupied-neighbour weight / existing-neighbour weight >= `thresh` (default **0.6**; the legacy code used 0.7); survivors get weighted
+medians of `v w_l p_l`, `v_mad` and the flags
 
 | variable | meaning |
 |---|---|
-| `gflg` | 0 ionospheric if median `w_l > -3 v + 90`, else 1 ground |
-| `gflg_conv` | weighted fraction of ground-scatter neighbours: <= `lth` 0, >= `uth` 1, else 2 (undetermined) |
-| `gflg_kde` | Beta-distribution fit of the neighbour flags, `1 - cdf(pth)` mapped like `gflg_conv` |
+| `gflg_kde` **(recommended)** | Beta-distribution fit of the neighbour flags, `1 - cdf(pth)` mapped like `gflg_conv` |
+| `gflg_conv` **(recommended)** | weighted fraction of ground-scatter neighbours: <= `lth` 0, >= `uth` 1, else 2 (undetermined) |
+| `gflg` *(legacy rule, not recommended)* | 0 ionospheric if median `w_l > -3 v + 90`, else 1 ground |
 | `clabel` | per-scan DBSCAN label in (beam, gate) space, -1 = noise |
+
+**Which flag to use.** `gflg_kde` and `gflg_conv` (the neighbours' own fitacf flags, pooled) and, from the DBSCAN model, `gflg_ribiero` agree with physics:
+on a whole day of bks and gbr 0.0-0.5% of the echoes they call ground scatter move faster than 50 m/s. The legacy `gflg` rule labels 96% of the bks echoes
+ground scatter, and on gbr 18.7% of its "ground scatter" moves faster than 50 m/s (with the default DBSCAN settings, 36.4% of the kept gbr echoes and 18.1% of the bks ones
+are ground for this rule but ionospheric for the Ribiero rule; 53% / 41% of them move faster than 25 m/s). It is still written for compatibility and the NetCDF attribute `recommended_flags` says `gflg_kde, gflg_conv`.
+`gflg_conv` leaves 28% (bks) to 39% (gbr) of the echoes undetermined (2); `gflg_kde` decides more of them.
+
+**Threshold.** Proxy measured on a whole day with the DBSCAN clusters as "structure" (not ground truth), `thresh` 0.5 / 0.6 / 0.7:
+
+| | noise removed | large clusters kept | medium clusters kept |
+|---|---|---|---|
+| bks | 87.8% / 96.1% / 99.4% | 95.6% / 91.4% / 83.6% | 84.8% / 71.2% / 47.8% |
+| gbr | 86.8% / 95.8% / 99.3% | 92.4% / 85.3% / 71.3% | 86.2% / 74.8% / 55.7% |
+
+0.7 removes nearly all isolated echoes but cuts thin and patchy structure (dense bands get holes, ionospheric fringes disappear); 0.6 is the default compromise,
+0.5 keeps patchy ionospheric scatter at the price of more isolated echoes. Reproduce with `make analyse-day RAD=bks`.
+
+**Range edges (`edge_gates`).** The legacy rule counts the neighbours below gate 0 and above the last gate as empty cells (`edge_gates = "legacy"`, the default, so
+results match the old code). A cell at the first or last gate can then reach at most 40/55 = 73% of the neighbour weight, so with the 0.7 threshold only a perfectly
+filled neighbourhood survives: on bks 17% of the structure echoes at gate 0 and 2% at the last gate were kept, against 33-88% at their neighbours. `edge_gates = "missing"`
+leaves such neighbours out of the weight, like missing beams, which changes only gates 0 and `nrang - 1` (interior gates are identical; tested). Use
+`[median] edge_gates = "missing"`, `--edge-gates missing` or `EXTRA="--edge-gates missing"`.
 
 Speed: about 0.15 ms per echo with KDE; an hour of bks takes ~10 s.
 
@@ -85,6 +107,7 @@ read them with `amgeo_sd.io.read_fitacf_file` (falls back to generic DMAP) or `p
 ### Differences from the legacy output
 
 * scans with start time in `[start, end]` are written; the legacy run emitted the neighbouring scans and left the last two as empty placeholders;
+* the default `thresh` is 0.6 instead of 0.7 and `edge_gates` can treat out-of-range gates as missing (see above); the legacy behaviour is `thresh = 0.7`, `edge_gates = "legacy"`;
 * the KDE jitter uses a seeded generator per scan (reproducible, independent of `jobs`); a failed Beta fit gives 2 instead of an exception;
 * filtered beams with no surviving echo are dropped (as after the legacy DBSCAN regrouping); `v_e` is NaN in memory and in the `.nc`, `v_mad` in the `.fitacf.pl.bz2`;
 * `clabel` is also written; `scan_stime` / `scan_etime` are coordinates of `scan_num` rather than separate dimensions; `frang`, `rsep` are stored;

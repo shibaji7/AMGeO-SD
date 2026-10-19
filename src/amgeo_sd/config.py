@@ -52,7 +52,7 @@ class Input:
 class Median:
     """``[median]``: parameters of the median-filter model."""
 
-    thresh: float = 0.7
+    thresh: float = 0.6
     pth: float = 0.25
     lth: float = 0.2
     uth: float = 0.8
@@ -60,6 +60,7 @@ class Median:
     cluster: bool = True
     eps: float = 2.0
     min_samples: int = 5
+    edge_gates: str = "legacy"  # gates outside the radar range count as: "legacy" empty, "missing" not counted
 
 
 @dataclass
@@ -178,6 +179,10 @@ class Settings:
                 raise ValueError("[plot] projection must be auto, polar or ortho")
             return self
         self._validate_run()
+        from amgeo_sd.filters.median import EDGE_GATES
+
+        if self.median.edge_gates not in EDGE_GATES:
+            raise ValueError(f"[median] edge_gates must be one of {EDGE_GATES}, not {self.median.edge_gates!r}")
         if not 0 < self.median.thresh <= 1:
             raise ValueError("[median] thresh must be in (0, 1]")
         if not 0 <= self.median.lth < self.median.uth <= 1:
@@ -275,7 +280,7 @@ FIELD_DOCS = {
         "ftype": '"fitacf" or "fitacf3" (archive lookup only)',
     },
     "median": {
-        "thresh": "min fraction of the 3x3x3 neighbour weight that must hold an echo",
+        "thresh": "min fraction of the 3x3x3 neighbour weight that must hold an echo (legacy default 0.7)",
         "pth": "Beta-distribution cut for the KDE ground-scatter flag",
         "lth": "P(ground) <= lth  -> ionospheric (0)",
         "uth": "P(ground) >= uth  -> ground (1); in between -> undetermined (2)",
@@ -283,6 +288,7 @@ FIELD_DOCS = {
         "cluster": "DBSCAN labels per scan -> clabel",
         "eps": "DBSCAN radius in (beam, gate) units",
         "min_samples": "DBSCAN core-point size",
+        "edge_gates": '"legacy" = gates outside the radar range count as empty neighbours; "missing" = not counted',
     },
     "dbscan": {
         "eps": "DBSCAN radius in (gate / eps_g, scan / eps_s) units",
