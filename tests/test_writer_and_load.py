@@ -114,11 +114,29 @@ def test_writer_replaces_instead_of_appending(tmp_path):
         b.extra = {"v_mad": np.zeros(2)}
     scan = Scan(beams=beams).update()
     out = scans_to_records([scan], recs)
-    path = tmp_path / "x.fitacf.pl.bz2"
+    path = tmp_path / "x.fitacf.pp.bz2"
     for _ in range(2):
         write_fitacfpp(path, out)
     assert len(read_fitacf_file(path)) == 3
     assert not list(tmp_path.glob("*.part"))
+
+
+def test_old_pl_suffix_is_still_read_and_new_names_are_used(tmp_path):
+    import shutil
+
+    name = fitacfpp_name("tst", T0)
+    assert name == "20250208.0210.00.tst.fitacf.pp.bz2"
+    recs = [synthetic_record(T0 + dt.timedelta(seconds=3 * i), i) for i in range(3)]
+    beams = records_to_beams(recs)
+    from amgeo_sd.models import Scan
+
+    for b in beams:
+        b.extra = {"v_mad": np.zeros(2)}
+    new = write_fitacfpp(tmp_path / name, scans_to_records([Scan(beams=beams).update()], recs))
+    old = tmp_path / "20250208.0210.00.tst.fitacf.pl.bz2"
+    shutil.copy(new, old)
+    _, meta = load_scans([old])
+    assert meta["kind"] == "fitacf++" and len(read_fitacf_file(old)) == 3
 
 
 def test_scans_to_records_needs_the_source_record():

@@ -3,7 +3,7 @@
 # Run:  make plot-rti CONFIG=configs/plot_rti_demo.toml
 [plot]
 inputs  = ["tests/data/bks_20250208"]
-compare = ["data/outputs/demo/bks/bks_202502080300_202502080400.fitacf++.nc"]
+compare = ["data/outputs/demo/bks/bks_202502080300_202502080400.pp.nc"]
 beam    = 12
 start   = 2025-02-08T03:00:00
 end     = 2025-02-08T04:00:00

@@ -1,7 +1,8 @@
 # Using amgeo_sd
 
 Everything is driven from `make` (run `make help`), from the TOML parameter files in `configs/`, or from Python.
-What is not ported yet is listed in [PORTING.md](PORTING.md).
+Every parameter is described in the **[parameter reference](PARAMETERS.md)**; what is not ported yet is listed in [PORTING.md](PORTING.md).
+Back to the [README](../README.md) or the [documentation index](README.md).
 
 ## 1. Make targets
 
@@ -9,22 +10,26 @@ What is not ported yet is listed in [PORTING.md](PORTING.md).
 |---|---|
 | `make env` / `env-update` / `env-remove` / `install` | conda env `amgeo` (Python 3.12) from `environment.yml`; editable install of the package |
 | `make data-unpack` / `data-info` / `data-clean` | unzip `tests/data/archives/*.zip`; summarise beams / scans / echoes per radar-day; delete unpacked folders that can be restored |
-| `make median` / `median-demo` | median-filter model: fitacf -> fitacf++ (`.nc` and `.fitacf.pl.bz2`) |
+| `make median` / `median-demo` | median-filter model: fitacf -> fitacf++ (`.nc` and `.fitacf.pp.bz2`) |
 | `make analyse-day RAD=bks` | whole-day comparison of the median filter and the DBSCAN model: runs both, prints retention / flag tables, draws figures (`examples/median_day_analysis/`) |
 | `make dbscan` / `dbscan-demo` | DBSCAN / Gaussian-mixture model: raw echoes labelled with clusters and the Ribiero scatter flag -> fitacf++ |
 | `make plot-rti` / `plot-fov` / `plot-demo` | RTI and field-of-view figures from fitacf or fitacf++ files |
 | `make config-show` | print the resolved median parameters without running |
 | `make test` / `test-unit` / `test-real` / `test-cov` | test suite (real-data tests skip when `tests/data` is empty) |
 | `make lint` / `format` | ruff checks / formatting |
+| `make docs` | regenerate [`PARAMETERS.md`](PARAMETERS.md) from the settings classes |
 | `make out-clean` / `clean` | delete pipeline results (`OUT`, default `data/outputs`) / caches and build files |
 
-Variables (`CONFIG RAD START END INPUT OUT SID JOBS THRESH PTH LTH UTH GMM GEOMETRY EXTRA COMPARE BEAM TIME PARAMS COORDS FIGDIR`) are
-passed as `make median RAD=bks START=2025-02-08T03:00 ...`; anything else goes in `EXTRA="--no-kde"`.
+Variables (`CONFIG RAD START END INPUT OUT SID JOBS THRESH PTH LTH UTH GMM GEOMETRY EXTRA COMPARE BEAM TIME PARAMS COORDS FIGDIR DAY WORK`) are
+passed as `make median RAD=bks START=2025-02-08T03:00 ...`; anything else goes in `EXTRA="--no-kde"`. What each variable means and which
+targets use it is in the [parameter reference](PARAMETERS.md#make-variables).
 
 ## 2. Parameters: TOML files
 
 Precedence: built-in defaults < TOML file < command-line / make variables. Unknown keys are errors.
-[`configs/default.toml`](../configs/default.toml) lists **every** parameter with its default and a comment:
+[`configs/default.toml`](../configs/default.toml) lists **every** parameter with its default and a comment, and the
+[parameter reference](PARAMETERS.md) gives type, allowed values, flag and make variable for each (the files in
+[`configs/`](../configs/README.md) are explained there). The tables and keys:
 
 ```toml
 [run]     rad, start, end, sim_id, out, jobs
@@ -91,25 +96,25 @@ Speed: about 0.15 ms per echo with KDE; an hour of bks takes ~10 s.
 
 | file | content |
 |---|---|
-| `<rad>_<start>_<end>.fitacf++.nc` | NetCDF4: `gdlat gdlon gdazm` (beams x gates); per beam `bmnum noise.sky tfreq scan nrang frang rsep time mppul intt.us intt.sc` (scan_num x sound); per echo `v w_l p_l gflg gflg_conv gflg_kde v_mad clabel` (scan_num x sound x gates, NaN = no echo) |
-| `<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pl.bz2` | fitacf++ as DMAP, one record per surviving beam (see below) |
+| `<rad>_<start>_<end>.pp.nc` | NetCDF4: `gdlat gdlon gdazm` (beams x gates); per beam `bmnum noise.sky tfreq scan nrang frang rsep time mppul intt.us intt.sc` (scan_num x sound); per echo `v w_l p_l gflg gflg_conv gflg_kde v_mad clabel` (scan_num x sound x gates, NaN = no echo) |
+| `<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2` | fitacf++ as DMAP, one record per surviving beam (see below) |
 | `params.toml`, `script.cmd` | annotated parameters and the command line |
 
-**`.fitacf.pl.bz2`**: a bz2 DMAP stream. Each record is the original fitacf record (all standard fields: header values, `pwr0`,
+**`.fitacf.pp.bz2`**: a bz2 DMAP stream. Each record is the original fitacf record (all standard fields: header values, `pwr0`,
 `ltab`, ...) with `slist v w_l p_l gflg` replaced by the filtered values, `v_e` set to `v_mad` (the weighted median absolute deviation of the
 neighbouring velocities, in m/s: a robust local spread, not a fit error; on bks it has a median of 3.8 m/s against 4.0 m/s for the original fit errors)
 and `qflg` = 1 for every kept cell. Other per-echo fitacf arrays (`p_s`, `p_l_e`, `elv`, ...)
 keep their value where the gate had an echo and are NaN / 0 where the filter added a cell (about 4% of cells). Added arrays: `v_mad`, `gflg_conv`, `gflg_kde`
 (-1 = not computed), `clabel`; strings `amgeo.model`, `amgeo.version`; `origin.command` / `origin.time` record the processing.
 The scan flag is re-set on the first kept beam of every scan. Because of the extra fields, `pydarnio.read_fitacf` rejects these files;
-read them with `amgeo_sd.io.read_fitacf_file` (falls back to generic DMAP) or `pydarnio.read_dmap`. The raw-data archive lookup (`root`) skips `*.fitacf.pl.bz2`, so filtered and raw data are never mixed; the loaders accept them when given explicitly or by directory.
+read them with `amgeo_sd.io.read_fitacf_file` (falls back to generic DMAP) or `pydarnio.read_dmap`. The raw-data archive lookup (`root`) skips `*.fitacf.pp.bz2`, so filtered and raw data are never mixed; the loaders accept them when given explicitly or by directory.
 
 ### Differences from the legacy output
 
 * scans with start time in `[start, end]` are written; the legacy run emitted the neighbouring scans and left the last two as empty placeholders;
 * the default `thresh` is 0.6 instead of 0.7 and `edge_gates` can treat out-of-range gates as missing (see above); the legacy behaviour is `thresh = 0.7`, `edge_gates = "legacy"`;
 * the KDE jitter uses a seeded generator per scan (reproducible, independent of `jobs`); a failed Beta fit gives 2 instead of an exception;
-* filtered beams with no surviving echo are dropped (as after the legacy DBSCAN regrouping); `v_e` is NaN in memory and in the `.nc`, `v_mad` in the `.fitacf.pl.bz2`;
+* filtered beams with no surviving echo are dropped (as after the legacy DBSCAN regrouping); `v_e` is NaN in memory and in the `.nc`, `v_mad` in the `.fitacf.pp.bz2`;
 * `clabel` is also written; `scan_stime` / `scan_etime` are coordinates of `scan_num` rather than separate dimensions; `frang`, `rsep` are stored;
 * the scan period is the median spacing of all scan-start beams (the legacy code differenced the last two starts among beams with echoes);
 * range-cell geometry uses the data's `frang` / `rsep` (legacy: always 180 / 45 km; identical for bks and gbr);
@@ -138,8 +143,8 @@ Reads the scans in `[start, end]` and **labels** the raw echoes; nothing is remo
    Burrell et al. 2018 for the short ones), otherwise ground scatter. Echoes in noise and in gates below `min_gate` stay unclassified: `gflg_ribiero`
    is -1 unclassified, 0 ionospheric, 1 ground.
 
-Outputs (`<out>/<sim_id>/<rad>/`): `<rad>_<start>_<end>.fitacf++.nc` with `v w_l p_l gflg` unchanged plus `cluster_tag` and `gflg_ribiero`; a
-`.fitacf.pl.bz2` that keeps **every original record** (also beams without echoes, original scan flags and `qflg` / `v_e`) with the two extra arrays and
+Outputs (`<out>/<sim_id>/<rad>/`): `<rad>_<start>_<end>.pp.nc` with `v w_l p_l gflg` unchanged plus `cluster_tag` and `gflg_ribiero`; a
+`.fitacf.pp.bz2` that keeps **every original record** (also beams without echoes, original scan flags and `qflg` / `v_e`) with the two extra arrays and
 `amgeo.model = "dbscan"`; an annotated `params.toml` (`[dbscan]` table, result counts) and `script.cmd`. Plot it with
 `make plot-rti INPUT=<nc> BEAM=12 PARAMS="v cluster_tag gflg_ribiero"`.
 
@@ -168,14 +173,14 @@ it is recorded in the NetCDF attributes (`geometry_backend`, `geometry_altitude`
 
 ## 6. Plots (fitacf and fitacf++)
 
-All plots read any supported input through `amgeo_sd.io.load_frame`: raw fitacf 2.0 / 2.5 / 3.0, `*.fitacf.pl.bz2`, or `*.fitacf++.nc`
+All plots read any supported input through `amgeo_sd.io.load_frame`: raw fitacf 2.0 / 2.5 / 3.0, `*.fitacf.pp.bz2`, or `*.pp.nc`
 (files or directories), and produce the same echo table, so a raw and a filtered dataset can be drawn identically.
 
 ```bash
-make plot-rti INPUT=tests/data/bks_20250208 COMPARE=data/outputs/demo/bks/bks_202502080300_202502080400.fitacf++.nc \
+make plot-rti INPUT=tests/data/bks_20250208 COMPARE=data/outputs/demo/bks/bks_202502080300_202502080400.pp.nc \
      BEAM=12 START=2025-02-08T03:00 END=2025-02-08T04:00 PARAMS=v          # raw above, fitacf++ below (+ gflg panels)
-make plot-rti INPUT=data/outputs/demo/bks/*.fitacf++.nc BEAM=12 PARAMS="v w_l p_l gflg gflg_conv v_mad"
-make plot-fov INPUT=data/outputs/demo/bks/20250208.0300.00.bks.fitacf.pl.bz2 TIME=2025-02-08T03:30 PARAMS="v gflg_conv" COORDS=aacgmv2
+make plot-rti INPUT=data/outputs/demo/bks/*.pp.nc BEAM=12 PARAMS="v w_l p_l gflg gflg_conv v_mad"
+make plot-fov INPUT=data/outputs/demo/bks/20250208.0300.00.bks.fitacf.pp.bz2 TIME=2025-02-08T03:30 PARAMS="v gflg_conv" COORDS=aacgmv2
 make plot-demo                                                              # runs the demo filter, then all of the above
 ```
 
@@ -194,7 +199,7 @@ from amgeo_sd.io import load_frame
 from amgeo_sd.plotting import plot_rti, plot_rti_compare, plot_fan
 
 raw, _ = load_frame(["tests/data/bks_20250208"], dt.datetime(2025, 2, 8, 3), dt.datetime(2025, 2, 8, 4))
-pp, meta = load_frame(["data/outputs/demo/bks/bks_202502080300_202502080400.fitacf++.nc"])
+pp, meta = load_frame(["data/outputs/demo/bks/bks_202502080300_202502080400.pp.nc"])
 plot_rti_compare({"fitacf 2.5": raw, "fitacf++": pp}, beam=12, param="v", path="rti.png", rad="bks", flag="gflg")
 plot_fan(pp, "bks", dt.datetime(2025, 2, 8, 3, 30), params=("v", "gflg_conv"), path="fan.png")
 ```

@@ -3,7 +3,7 @@
 Supported inputs (chosen by file name):
 
 * ``*.fitacf``, ``*.fitacf3``, ``*.fitacf.bz2``, ``*.fitacf.gz`` - SuperDARN fitacf 2.0 / 2.5 / 3.0
-* ``*.fitacf.pl.bz2`` - fitacf++ DMAP written by :mod:`amgeo_sd.io.writer`
+* ``*.fitacf.pp.bz2`` (earlier name ``*.fitacf.pl.bz2``) - fitacf++ DMAP written by :mod:`amgeo_sd.io.writer`
 * ``*.nc`` - fitacf++ NetCDF written by :mod:`amgeo_sd.export`
 
 Directories are searched recursively. All sources give the same table (see
@@ -22,7 +22,14 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from amgeo_sd.io.fitacf import beams_to_scans, read_fitacf_file, records_to_beams, scans_to_dataframe
+from amgeo_sd.io.fitacf import (
+    FITACFPP_SUFFIX,
+    LEGACY_FITACFPP_SUFFIXES,
+    beams_to_scans,
+    read_fitacf_file,
+    records_to_beams,
+    scans_to_dataframe,
+)
 from amgeo_sd.models import Beam, Scan
 
 _RAD_IN_NAME = re.compile(r"\.([a-z]{3})\.(?:[a-z]\.)?fitacf")
@@ -127,7 +134,7 @@ def load_scans(
         beams.extend(records_to_beams(read_fitacf_file(f), start, end))
         m = _RAD_IN_NAME.search(f.name)
         meta["rad"] = meta["rad"] or (m.group(1) if m else None)
-        if f.name.endswith(".fitacf.pl.bz2"):
+        if f.name.endswith((FITACFPP_SUFFIX, *LEGACY_FITACFPP_SUFFIXES)):
             meta["kind"] = "fitacf++"
     beams.sort(key=lambda b: b.time)
     versions = sorted({b.fit_version for b in beams if b.fit_version})

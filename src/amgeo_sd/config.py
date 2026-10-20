@@ -92,8 +92,8 @@ class Geometry:
 class Output:
     """``[output]``: which products to write."""
 
-    netcdf: bool = True  # <rad>_<start>_<end>.fitacf++.nc
-    fitacf: bool = True  # <YYYYMMDD.HHMM.SS>.<rad>.fitacf.pl.bz2
+    netcdf: bool = True  # <rad>_<start>_<end>.pp.nc
+    fitacf: bool = True  # <YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2
 
 
 @dataclass
@@ -102,7 +102,7 @@ class Plot:
 
     inputs: list[str] = field(
         default_factory=list
-    )  # fitacf / fitacf++ files or directories (.nc, .fitacf.pl.bz2, .fitacf[.bz2])
+    )  # fitacf / fitacf++ files or directories (.nc, .fitacf.pp.bz2, .fitacf[.bz2])
     compare: list[str] = field(default_factory=list)  # RTI only: more inputs, stacked below the first for comparison
     rad: str | None = None  # default: taken from the files
     beam: int = 0  # RTI beam
@@ -308,11 +308,11 @@ FIELD_DOCS = {
         "altitude": "cell altitude in km",
     },
     "output": {
-        "netcdf": "<rad>_<start>_<end>.fitacf++.nc",
-        "fitacf": "<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pl.bz2 (DMAP with extra fields)",
+        "netcdf": "<rad>_<start>_<end>.pp.nc",
+        "fitacf": "<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2 (DMAP with extra fields)",
     },
     "plot": {
-        "inputs": "fitacf / fitacf++ files or directories (.nc, .fitacf.pl.bz2, .fitacf[.bz2|.gz])",
+        "inputs": "fitacf / fitacf++ files or directories (.nc, .fitacf.pp.bz2, .fitacf[.bz2|.gz])",
         "compare": "RTI: more inputs stacked below the first one",
         "rad": "radar code; empty = from the files",
         "beam": "RTI beam number",

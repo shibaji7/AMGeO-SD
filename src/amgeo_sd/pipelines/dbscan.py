@@ -39,9 +39,9 @@ def run_dbscan_model(
     """Run the DBSCAN / GMM model for one radar and time window.
 
     Reads the scans in ``[start, end]``, labels every echo with ``cluster_tag`` and ``gflg_ribiero``
-    (:func:`amgeo_sd.clustering.cluster_scans`) and writes ``<rad>_<start>_<end>.fitacf++.nc`` and
-    ``<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pl.bz2`` plus ``params.toml`` / ``script.cmd`` to ``<out_base>/<sim_id>/<rad>/``.
-    The echoes themselves are the raw fitacf echoes; the ``.fitacf.pl.bz2`` keeps every original record.
+    (:func:`amgeo_sd.clustering.cluster_scans`) and writes ``<rad>_<start>_<end>.pp.nc`` and
+    ``<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2`` plus ``params.toml`` / ``script.cmd`` to ``<out_base>/<sim_id>/<rad>/``.
+    The echoes themselves are the raw fitacf echoes; the ``.fitacf.pp.bz2`` keeps every original record.
 
     Returns a dict with ``scan_info``, ``n_scans``, ``n_echoes``, ``n_clusters`` (beam, label pairs without noise),
     ``fraction_ground`` / ``fraction_noise`` of the echoes, ``out_dir``, ``nc_file`` / ``fitacf_file`` and ``scans``.
@@ -101,7 +101,7 @@ def run_dbscan_model(
         out["nc_file"] = str(
             export.write_netcdf(
                 export.scans_to_dataset(scans, fov, attrs),
-                out_dir / f"{rad}_{start:%Y%m%d%H%M}_{end:%Y%m%d%H%M}.fitacf++.nc",
+                out_dir / f"{rad}_{start:%Y%m%d%H%M}_{end:%Y%m%d%H%M}.pp.nc",
             )
         )
         logger.info(f"wrote {out['nc_file']}")

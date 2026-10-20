@@ -57,7 +57,7 @@ def cmd_info(args: argparse.Namespace) -> int:
 
 
 def cmd_median(args: argparse.Namespace) -> int:
-    """Median-filter model: fitacf -> fitacf++ (.nc and .fitacf.pl.bz2). Parameters: --config TOML, then flags."""
+    """Median-filter model: fitacf -> fitacf++ (.nc and .fitacf.pp.bz2). Parameters: --config TOML, then flags."""
     from amgeo_sd.config import load_settings
     from amgeo_sd.pipelines import run_from_settings
 
@@ -132,6 +132,14 @@ def cmd_dbscan(args: argparse.Namespace) -> int:
     for key in ("nc_file", "fitacf_file"):
         if key in out:
             print(f"{key:<15}: {out[key]}")
+    return 0
+
+
+def cmd_params(args: argparse.Namespace) -> int:
+    """Print the parameter reference (docs/PARAMETERS.md) generated from the settings classes."""
+    from amgeo_sd.params_doc import parameters_markdown
+
+    sys.stdout.write(parameters_markdown())
     return 0
 
 
@@ -210,8 +218,8 @@ def build_parser() -> argparse.ArgumentParser:
     flag = argparse.BooleanOptionalAction
     m.add_argument("--kde", action=flag, default=None, help="compute the Beta/KDE flag (default on; slow part)")
     m.add_argument("--cluster", action=flag, default=None, help="DBSCAN labelling (default on)")
-    m.add_argument("--netcdf", action=flag, default=None, help="write the .fitacf++.nc file (default on)")
-    m.add_argument("--fitacf", action=flag, default=None, help="write the .fitacf.pl.bz2 file (default on)")
+    m.add_argument("--netcdf", action=flag, default=None, help="write the .pp.nc file (default on)")
+    m.add_argument("--fitacf", action=flag, default=None, help="write the .fitacf.pp.bz2 file (default on)")
     m.add_argument(
         "--geometry",
         choices=["legacy", "pydarn"],
@@ -252,24 +260,26 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--geometry", choices=["legacy", "pydarn"], help="range-cell geolocation (default legacy)")
     d.add_argument("--altitude", type=float, help="cell altitude in km (default 300)")
     d.add_argument(
-        "--netcdf", action=argparse.BooleanOptionalAction, default=None, help="write the .fitacf++.nc file (default on)"
+        "--netcdf", action=argparse.BooleanOptionalAction, default=None, help="write the .pp.nc file (default on)"
     )
     d.add_argument(
         "--fitacf",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="write the .fitacf.pl.bz2 file (default on)",
+        help="write the .fitacf.pp.bz2 file (default on)",
     )
     d.add_argument("-o", "--out", help="output base dir (default data/outputs)")
     d.add_argument("-sid", "--sim-id", help="run id; output goes to <out>/<sim-id>/<rad>/ (default L100)")
     d.set_defaults(func=cmd_dbscan)
+
+    sub.add_parser("params", help=cmd_params.__doc__).set_defaults(func=cmd_params)
 
     pl = sub.add_parser("plot", help=cmd_plot.__doc__)
     pl.add_argument("kind", choices=["rti", "fov"], help="rti: range-time plot of one beam; fov: map of one scan")
     pl.add_argument("-c", "--config", help="TOML parameter file ([plot] table); flags below override it")
     pl.add_argument("--print-config", action="store_true", help="print the resolved [plot] parameters and exit")
     pl.add_argument(
-        "-i", "--input", nargs="+", help="fitacf / fitacf++ files or directories (.nc, .fitacf.pl.bz2, .fitacf[.bz2])"
+        "-i", "--input", nargs="+", help="fitacf / fitacf++ files or directories (.nc, .fitacf.pp.bz2, .fitacf[.bz2])"
     )
     pl.add_argument("--compare", nargs="+", help="rti: further inputs stacked below the first")
     pl.add_argument("-r", "--rad", help="radar code (default: from the files)")

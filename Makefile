@@ -35,7 +35,7 @@ COORDS ?=
 FIGDIR ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help env env-update env-remove install data-unpack data-info data-clean median median-demo dbscan dbscan-demo out-clean plot-rti plot-fov plot-demo analyse-day config-show lint format test test-unit test-real test-cov clean
+.PHONY: help env env-update env-remove install data-unpack data-info data-clean median median-demo dbscan dbscan-demo out-clean plot-rti plot-fov plot-demo analyse-day config-show docs lint format test test-unit test-real test-cov clean
 
 ##@ Help
 help: ## Show this help
@@ -73,11 +73,11 @@ data-clean: ## Delete unpacked tests/data/<name>/ folders that can be restored f
 	done
 
 ##@ Pipelines
-median: ## fitacf -> fitacf++ (.nc + .fitacf.pl.bz2). CONFIG=file.toml and/or RAD START END [INPUT OUT SID JOBS THRESH PTH LTH UTH EXTRA]
+median: ## fitacf -> fitacf++ (.nc + .fitacf.pp.bz2). CONFIG=file.toml and/or RAD START END [INPUT OUT SID JOBS THRESH PTH LTH UTH EXTRA]
 	@test -n "$(CONFIG)" -o \( -n "$(RAD)" -a -n "$(START)" -a -n "$(END)" \) || { echo "usage: make median CONFIG=configs/median_bks_demo.toml   or   make median RAD=bks START=2025-02-08T03:00 END=2025-02-08T04:00 INPUT=tests/data/bks_20250208"; exit 2; }
 	$(PY) -m amgeo_sd median $(if $(CONFIG),-c $(CONFIG)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(if $(INPUT),-i $(INPUT)) $(if $(OUT),-o $(OUT)) $(if $(SID),-sid $(SID)) $(if $(JOBS),-j $(JOBS)) $(if $(THRESH),-th $(THRESH)) $(if $(PTH),-pth $(PTH)) $(if $(LTH),-lth $(LTH)) $(if $(UTH),-uth $(UTH)) $(if $(GEOMETRY),--geometry $(GEOMETRY)) $(EXTRA)
 
-dbscan: ## DBSCAN/GMM model: label raw echoes with clusters + Ribiero flag -> fitacf++ (.nc + .fitacf.pl.bz2). CONFIG and/or RAD START END [INPUT OUT SID GMM GEOMETRY EXTRA]
+dbscan: ## DBSCAN/GMM model: label raw echoes with clusters + Ribiero flag -> fitacf++ (.nc + .fitacf.pp.bz2). CONFIG and/or RAD START END [INPUT OUT SID GMM GEOMETRY EXTRA]
 	@test -n "$(CONFIG)" -o \( -n "$(RAD)" -a -n "$(START)" -a -n "$(END)" \) || { echo "usage: make dbscan CONFIG=configs/dbscan_bks_demo.toml   or   make dbscan RAD=bks START=2025-02-08T03:00 END=2025-02-08T04:00 INPUT=tests/data/bks_20250208 [GMM=A]"; exit 2; }
 	$(PY) -m amgeo_sd dbscan $(if $(CONFIG),-c $(CONFIG)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(if $(INPUT),-i $(INPUT)) $(if $(OUT),-o $(OUT)) $(if $(SID),-sid $(SID)) $(if $(GMM),-gmm $(GMM)) $(if $(GEOMETRY),--geometry $(GEOMETRY)) $(EXTRA)
 
@@ -89,6 +89,9 @@ median-demo: ## Run `median` from configs/median_{bks,gbr}_demo.toml (1 h each, 
 	$(MAKE) --no-print-directory median CONFIG=configs/median_bks_demo.toml
 	$(MAKE) --no-print-directory median CONFIG=configs/median_gbr_demo.toml
 
+docs: ## Regenerate docs/PARAMETERS.md from the settings classes (tests fail when it is stale)
+	$(PY) -m amgeo_sd params > docs/PARAMETERS.md
+
 config-show: ## Print the resolved median parameters (CONFIG=... plus overrides) without running
 	$(PY) -m amgeo_sd median --print-config $(if $(CONFIG),-c $(CONFIG)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(EXTRA)
 
@@ -98,7 +101,7 @@ out-clean: ## Delete pipeline results in OUT (default data/outputs)
 PLOT_FLAGS = $(if $(GEOMETRY),--geometry $(GEOMETRY)) $(if $(CONFIG),-c $(CONFIG)) $(if $(INPUT),-i $(INPUT)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(if $(PARAMS),-p $(PARAMS)) $(if $(FIGDIR),-o $(FIGDIR)) $(EXTRA)
 
 plot-rti: ## RTI of one beam from fitacf or fitacf++ files. CONFIG=file.toml and/or INPUT BEAM [COMPARE START END PARAMS FIGDIR EXTRA]
-	@test -n "$(CONFIG)" -o -n "$(INPUT)" || { echo "usage: make plot-rti INPUT=data/outputs/demo/bks/x.fitacf++.nc BEAM=12 [COMPARE=raw_dir PARAMS='v gflg' START=... END=...]   or   CONFIG=configs/plot_rti_demo.toml"; exit 2; }
+	@test -n "$(CONFIG)" -o -n "$(INPUT)" || { echo "usage: make plot-rti INPUT=data/outputs/demo/bks/x.pp.nc BEAM=12 [COMPARE=raw_dir PARAMS='v gflg' START=... END=...]   or   CONFIG=configs/plot_rti_demo.toml"; exit 2; }
 	$(PY) -m amgeo_sd plot rti $(PLOT_FLAGS) $(if $(BEAM),-b $(BEAM)) $(if $(COMPARE),--compare $(COMPARE))
 
 plot-fov: ## Field-of-view map of one scan from fitacf or fitacf++ files. CONFIG=file.toml and/or INPUT TIME [PARAMS COORDS RAD FIGDIR EXTRA]
@@ -108,7 +111,7 @@ plot-fov: ## Field-of-view map of one scan from fitacf or fitacf++ files. CONFIG
 plot-demo: median-demo ## Run the demo filter, then draw RTI + FoV figures (raw vs fitacf++) for bks and gbr into data/figures/demo/
 	$(MAKE) --no-print-directory plot-rti CONFIG=configs/plot_rti_demo.toml
 	$(MAKE) --no-print-directory plot-fov CONFIG=configs/plot_fov_demo.toml
-	$(MAKE) --no-print-directory plot-rti INPUT=tests/data/gbr_20250208 COMPARE=data/outputs/demo/gbr/gbr_202502080300_202502080400.fitacf++.nc BEAM=7 START=2025-02-08T03:00 END=2025-02-08T04:00 PARAMS=v FIGDIR=data/figures/demo EXTRA="--name rti_gbr_b07_raw_vs_fitacfpp"
+	$(MAKE) --no-print-directory plot-rti INPUT=tests/data/gbr_20250208 COMPARE=data/outputs/demo/gbr/gbr_202502080300_202502080400.pp.nc BEAM=7 START=2025-02-08T03:00 END=2025-02-08T04:00 PARAMS=v FIGDIR=data/figures/demo EXTRA="--name rti_gbr_b07_raw_vs_fitacfpp"
 	$(MAKE) --no-print-directory plot-fov INPUT=tests/data/gbr_20250208 TIME=2025-02-08T03:05 PARAMS="v gflg" START=2025-02-08T03:00 END=2025-02-08T03:10 FIGDIR=data/figures/demo EXTRA="--name fov_gbr_0305_raw"
 
 ANALYSIS_DIR = examples/median_day_analysis

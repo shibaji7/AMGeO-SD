@@ -2,6 +2,7 @@
 # Copy this file, delete what you do not change, and run:
 #     make median CONFIG=configs/my_run.toml
 # Command-line values (make RAD=..., EXTRA="--no-kde") override the file.
+# Type, allowed values, command-line flag and make variable of every key: docs/PARAMETERS.md
 
 [run]
 rad    = "bks"                    # three-letter radar code (required)
@@ -48,13 +49,13 @@ backend  = "legacy"               # "legacy" = original CalcFov (reproduces the 
 altitude = 300.0                  # km
 
 [output]
-netcdf = true                     # <rad>_<start>_<end>.fitacf++.nc
-fitacf = true                     # <YYYYMMDD.HHMM.SS>.<rad>.fitacf.pl.bz2 (DMAP with extra fields)
+netcdf = true                     # <rad>_<start>_<end>.pp.nc
+fitacf = true                     # <YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2 (DMAP with extra fields)
 
 # ---------------------------------------------------------------------------------------------
 # Figures: `make plot-rti CONFIG=...` / `make plot-fov CONFIG=...` read this table.
 [plot]
-inputs     = []                   # fitacf / fitacf++ files or directories (.nc, .fitacf.pl.bz2, .fitacf[.bz2|.gz])
+inputs     = []                   # fitacf / fitacf++ files or directories (.nc, .fitacf.pp.bz2, .fitacf[.bz2|.gz])
 compare    = []                   # RTI: more inputs stacked below the first one
 rad        = ""                   # radar code; empty = from the files
 beam       = 0                    # RTI beam number

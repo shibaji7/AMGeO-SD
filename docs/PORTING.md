@@ -11,10 +11,10 @@ section, and a test on the real data in `tests/data` (bks = mid-latitude, gbr = 
 |---|---|---|
 | `sd/clustering_algo.py` `BeamGateTimeFilter`, `BeamGateFilter`, `ScatterTypeDetection` (+ `fitacf_amgeo_cluster.py`): beam-gate DBSCAN per 30-min window, KDE ionospheric/ground classification, cluster tracking in time | `clustering/beam_gate.py`, `clustering/scatter_type.py` -> `make cluster` | needs `utils.smooth` (fix the `numpy.ones` / `eval` bug) |
 | `Beam.gs_estimation` (Sundeen / Blanchard 2009 criteria) | `scatter.py` | |
-| `BeamGateTimeFilter.repackage_to_netcdf`, `save_data`, per-cluster `.h5`, `beam_gate_clusters.csv`, `beam_gate_time_tracker.json` | `export.py` additions | the `.nc` / `.fitacf.pl.bz2` writers already handle `cluster_tag`, `gflg_ribiero` (used by the DBSCAN model) |
+| `BeamGateTimeFilter.repackage_to_netcdf`, `save_data`, per-cluster `.h5`, `beam_gate_clusters.csv`, `beam_gate_time_tracker.json` | `export.py` additions | the `.nc` / `.fitacf.pp.bz2` writers already handle `cluster_tag`, `gflg_ribiero` (used by the DBSCAN model) |
 
 This model gets its own TOML table (like `[median]` and `[dbscan]`), a `params.toml` in the output folder, and
-`.nc` + `.fitacf.pl.bz2` outputs through the existing writers; `make cluster`.
+`.nc` + `.fitacf.pp.bz2` outputs through the existing writers; `make cluster`.
 
 ## 2. Plotting tools that depend on the clustering models
 

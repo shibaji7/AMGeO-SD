@@ -1,4 +1,4 @@
-"""Median-filter model: fitacf files -> filtered scans -> ``*.fitacf++.nc`` (legacy ``fitacf_amgeo.py``)."""
+"""Median-filter model: fitacf files -> filtered scans -> ``*.pp.nc`` (legacy ``fitacf_amgeo.py``)."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def run_median_filter(
     Returns
     -------
     dict with ``scan_info``, ``n_scans``, ``n_echoes``, ``out_dir`` and, if ``save``, ``nc_file``
-    (``write_netcdf``) and ``fitacf_file`` (``write_fitacf``: ``*.fitacf.pl.bz2``), plus ``scans``
+    (``write_netcdf``) and ``fitacf_file`` (``write_fitacf``: ``*.fitacf.pp.bz2``), plus ``scans``
     (the filtered :class:`~amgeo_sd.models.Scan` list).
     """
     logger.info(f"median filter: {rad} {start} -> {end}")
@@ -126,7 +126,7 @@ def run_median_filter(
                 recommended_flags="gflg_kde, gflg_conv",
             )
             ds = export.scans_to_dataset(filtered, fov, attrs)
-            name = f"{rad}_{start:%Y%m%d%H%M}_{end:%Y%m%d%H%M}.fitacf++.nc"
+            name = f"{rad}_{start:%Y%m%d%H%M}_{end:%Y%m%d%H%M}.pp.nc"
             out["nc_file"] = str(export.write_netcdf(ds, out_dir / name))
             logger.info(f"wrote {out['nc_file']}")
         if write_fitacf:

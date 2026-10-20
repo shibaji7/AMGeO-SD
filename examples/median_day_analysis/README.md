@@ -1,5 +1,7 @@
 # Median-filter vs DBSCAN: whole-day analysis
 
+Back to the [README](../../README.md) · [usage guide](../../docs/USAGE.md) · [parameter reference](../../docs/PARAMETERS.md).
+
 Scripts used to judge the median-filter model on a full day of one radar (bks, gbr in `tests/data`), using the
 DBSCAN model's clusters as a *proxy* for "structure vs isolated noise" (DBSCAN is itself a heuristic, so this
 measures agreement between two algorithms, not truth).

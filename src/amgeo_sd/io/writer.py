@@ -1,4 +1,4 @@
-"""Write fitacf++ as a DMAP file: ``<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pl.bz2``.
+"""Write fitacf++ as a DMAP file: ``<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2``.
 
 Each surviving beam of a filtered scan becomes one record built from the *original* fitacf record
 of the same sounding, so every standard fitacf field (header, ``pwr0``, ``ltab``, ...) is kept and
@@ -47,7 +47,7 @@ _EXTRA_DTYPES = {
 
 
 def fitacfpp_name(rad: str, start: dt.datetime) -> str:
-    """``YYYYMMDD.HHMM.SS.<rad>.fitacf.pl.bz2``: the archive naming with the fitacf++ suffix."""
+    """``YYYYMMDD.HHMM.SS.<rad>.fitacf.pp.bz2``: the archive naming with the fitacf++ suffix."""
     return f"{start:%Y%m%d.%H%M.%S}.{rad}{FITACFPP_SUFFIX}"
 
 

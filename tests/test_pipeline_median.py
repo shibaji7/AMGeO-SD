@@ -161,7 +161,7 @@ def test_pipeline_outputs(real_run):
         "params.toml",
         "script.cmd",
     }
-    assert res["fitacf_file"].endswith(f"{rad}.fitacf.pl.bz2")
+    assert res["fitacf_file"].endswith(f"{rad}.fitacf.pp.bz2")
     # the written parameters are a valid config for the same run
     again = load_settings(out_dir / "params.toml")
     assert (
@@ -241,7 +241,7 @@ def test_cli_median(tmp_path, capsys, fitacf_files):
     )
     assert rc == 0
     assert "filtered scans" in capsys.readouterr().out
-    assert list((tmp_path / "C1" / "gbr").glob("*.fitacf++.nc"))
+    assert list((tmp_path / "C1" / "gbr").glob("*.pp.nc"))
 
 
 def test_pipeline_errors(tmp_path):
