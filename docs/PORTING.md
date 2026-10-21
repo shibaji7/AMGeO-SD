@@ -37,7 +37,7 @@ plot tools consume the beam-gate-time model's cluster records and still need por
 | `FetchData.pandas_to_beams`, `pandas_to_scans` (DataFrame back to scans; merges the first two scans when `len(s0)+len(s1)==len(s2)`) | `io/fitacf.py` `dataframe_to_scans` |
 | `PrintFitRec.print_fit_record` (text dump of every record with geographic and AACGM coordinates) | `io/summary.py` `write_fit_record` |
 | `fitacf_geopos.py`: AACGM latitude/longitude and azimuth of every range cell at a given time | `geo/radar.py` -> `make geopos` |
-| `clustering_algo.get_mean_sza` (solar zenith angle of a cell, pysolar) | `geo/sun.py` |
+| `clustering_algo.get_mean_sza` (solar zenith angle of a cell, pysolar; add `pysolar` to the dependencies when ported) | `geo/sun.py` |
 | `config/radar.csv`, `utils.get_radar` (mid / high latitude radar type) | `amgeo_sd/data/radars.csv` + `radars.get_radar()` |
 | `extra_codes/bs_analysis.py` (sub-auroral backscatter study, needs `spacepy`) | `examples/` if still wanted |
 | `utils.get_gridded_parameters` | replaced by `plotting/grid.py`; delete from the list once the clustering plots are ported |

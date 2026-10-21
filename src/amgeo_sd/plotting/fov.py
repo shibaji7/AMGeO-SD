@@ -36,7 +36,26 @@ GATE_HEIGHT_KM = 300.0
 
 
 def select_scan(df: pd.DataFrame, date: dt.datetime) -> pd.DataFrame:
-    """Rows of the scan whose first sounding is nearest to ``date`` (uses ``scnum`` when present)."""
+    """Rows of the scan whose first sounding is nearest to ``date``.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Echo table with ``time`` and ``scnum`` (from :func:`amgeo_sd.io.load_frame` or
+        :func:`amgeo_sd.io.scans_to_dataframe`).
+    date : datetime
+        Requested time (UTC, naive).
+
+    Returns
+    -------
+    pandas.DataFrame
+        The rows of the scan whose earliest echo time is closest to ``date``.
+
+    Raises
+    ------
+    ValueError
+        When the table is empty or has no ``scnum`` column.
+    """
     if df.empty:
         raise ValueError("no data to plot")
     if "scnum" not in df:
@@ -70,10 +89,27 @@ class FanPlots:
 
     Parameters
     ----------
+    figsize : (float, float)
+        Figure size in inches.
+    nrows, ncols : int
+        Panel layout; one map is added per :meth:`plot_fov` / :meth:`plot_layfovs` call, row by row.
+    dpi : int
+        Resolution of the figure on screen.
     coords : ``"geo"`` or ``"aacgmv2"``
         Coordinate frame of the map.
     projection : ``"auto"``, ``"polar"`` or ``"ortho"``
         ``auto`` is orthographic around the field of view, or polar stereographic above 70 deg latitude.
+    geometry : ``"legacy"`` or ``"pydarn"``
+        Field-of-view implementation, see :func:`amgeo_sd.geo.radar_fov`.
+    altitude : float
+        Height of the range cells [km], also used for the conversion to AACGM.
+
+    Examples
+    --------
+    >>> fan = FanPlots(nrows=1, ncols=2, figsize=(11, 5.5))
+    >>> fan.plot_fov(frame, datetime(2025, 2, 8, 3, 0), "bks", param="v")
+    >>> fan.plot_fov(frame, datetime(2025, 2, 8, 3, 0), "bks", param="gflg_kde")
+    >>> fan.save("fan.png")
     """
 
     def __init__(
@@ -152,7 +188,19 @@ class FanPlots:
 
     # ------------------------------------------------------------------ overlays
     def overlay_radar(self, ax, rad: str, date: dt.datetime, color: str = "darkblue"):
-        """Mark the radar site and label it with the radar code."""
+        """Mark the radar site and label it with the radar code.
+
+        Parameters
+        ----------
+        ax : cartopy GeoAxes
+            Map returned by :meth:`plot_fov`.
+        rad : str
+            Radar code; its site is read from the hardware file valid on ``date``.
+        date : datetime
+            UTC date (hardware epoch, and AACGM epoch for ``coords="aacgmv2"``).
+        color : str
+            Marker and label colour.
+        """
         site = hardware(rad, date).geographic
         lat, lon = _to_frame([site.lat], [site.lon], self.coords, date, 0.0)
         ax.scatter(lon, lat, s=25, marker="D", color=color, zorder=5, transform=self._latlon)
@@ -168,7 +216,20 @@ class FanPlots:
         )
 
     def overlay_fov(self, ax, fov_lat: np.ndarray, fov_lon: np.ndarray, color: str = "k", lw: float = 1.0):
-        """Outline of the field of view (all beams, gates 0..ngates)."""
+        """Outline of the field of view (all beams, gates 0..ngates).
+
+        Parameters
+        ----------
+        ax : cartopy GeoAxes
+            Map to draw on.
+        fov_lat, fov_lon : ndarray
+            Cell corners of shape ``(nbeams + 1, ngates + 1)`` in the map's frame (``glat``/``glon`` of
+            :func:`amgeo_sd.geo.radar_fov`, converted when ``coords="aacgmv2"``).
+        color : str
+            Line colour.
+        lw : float
+            Line width.
+        """
         nb, ng = fov_lat.shape[0] - 1, fov_lat.shape[1] - 1
         idx = (
             [(0, g) for g in range(ng + 1)]
@@ -196,7 +257,38 @@ class FanPlots:
         """Draw the scan nearest to ``date``: echoes coloured by ``param``; ground scatter (``gflg_mask`` == 1) gray.
 
         ``param`` may also be a flag column (``gflg``, ``gflg_conv``, ``gflg_kde``, ``gflg_ribiero``), drawn with the
-        IS / GS / undetermined classes. Returns the axes.
+        IS / GS / undetermined classes.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Echo table with ``time``, ``scnum``, ``bmnum``, ``slist``, ``nrang``, ``frang``, ``rsep``, ``param`` and,
+            for the mask, ``gflg_mask``.
+        date : datetime
+            Time of the scan to draw; the scan starting nearest to it is used (UTC, naive).
+        rad : str
+            Radar code, selects the geometry.
+        param : str
+            Column to colour by: ``v``, ``w_l``, ``p_l``, ``v_mad``, another numeric column, or a flag column.
+        gflg_mask : str or None
+            Flag column whose value 1 marks ground scatter, drawn gray under a ``GS`` legend (numeric ``param`` only);
+            ``None`` draws everything in colour.
+        add_colorbar : bool
+            Draw a colour bar (numeric ``param`` only).
+        title : str
+            Text at the top left; the radar code when empty.
+        vrange : (float, float, float), optional
+            ``(vmin, vmax, step)`` of the colour scale. Defaults: velocity -30..30 m/s in 5 m/s steps, width 0..100,
+            power 0..30, v_mad 0..30.
+        max_gate : int, optional
+            Draw only gates below this number; all gates when ``None``.
+        terminator : bool
+            Shade the night side (geographic coordinates only).
+
+        Returns
+        -------
+        cartopy GeoAxes
+            The map.
         """
         scan = select_scan(df, date)
         t0 = pd.Timestamp(scan["time"].min()).to_pydatetime()
@@ -261,7 +353,20 @@ class FanPlots:
         return ax
 
     def plot_layfovs(self, rads: Sequence[str], date: dt.datetime):
-        """Outlines of several radars' fields of view on one map."""
+        """Outlines of several radars' fields of view on one map.
+
+        Parameters
+        ----------
+        rads : sequence of str
+            Radar codes.
+        date : datetime
+            UTC date (hardware epoch and, for AACGM, the coordinate epoch).
+
+        Returns
+        -------
+        cartopy GeoAxes
+            The map.
+        """
         fovs = {r: radar_fov(r, date, altitude=self.altitude, azm=False, backend=self.geometry) for r in rads}
         lat = np.concatenate(
             [_to_frame(f["glat"], f["glon"], self.coords, date, self.altitude)[0].ravel() for f in fovs.values()]
@@ -279,12 +384,41 @@ class FanPlots:
     def add_instrument(
         self, ax, lat: float, lon: float, color: str = "darkblue", marker: str = "D", ms: float = 40, name: str = ""
     ):
-        """Mark another instrument at geographic (``lat``, ``lon``) and label it ``name`` (map must be in geo coordinates)."""
+        """Mark another instrument at geographic (``lat``, ``lon``) and label it ``name`` (map must be in geo coordinates).
+
+        Parameters
+        ----------
+        ax : cartopy GeoAxes
+            Map to draw on.
+        lat, lon : float
+            Geographic position [deg].
+        color : str
+            Marker colour.
+        marker : str
+            Matplotlib marker.
+        ms : float
+            Marker area (matplotlib ``s``).
+        name : str
+            Label written next to the marker.
+        """
         ax.scatter([lon], [lat], s=ms, color=color, marker=marker, transform=self._latlon, zorder=5)
         ax.text(lon + 1, lat - 1, name, ha="center", va="center", transform=self._latlon, color="darkgreen")
 
     def save(self, path: str | os.PathLike, dpi: int | None = None) -> str:
-        """Save the figure (format from the file extension) and return the path."""
+        """Save the figure (format from the file extension) and return the path.
+
+        Parameters
+        ----------
+        path : str or path
+            Output file (``.png``, ``.pdf``, ...); the directory is created.
+        dpi : int, optional
+            Resolution of the saved file; the figure's own resolution when ``None``.
+
+        Returns
+        -------
+        str
+            The path written.
+        """
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         self.fig.savefig(path, dpi=dpi, bbox_inches="tight")
         logger.info(f"saved FoV figure {path}")
@@ -311,7 +445,43 @@ def plot_fan(
     altitude: float = GATE_HEIGHT_KM,
     **kwargs,
 ) -> FanPlots:
-    """One map per entry of ``params`` for the scan nearest to ``date`` (side by side)."""
+    """One map per entry of ``params`` for the scan nearest to ``date`` (side by side).
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Echo table from :func:`amgeo_sd.io.load_frame` (raw fitacf or fitacf++).
+    rad : str
+        Radar code, selects the geometry.
+    date : datetime
+        Time of the scan to draw (UTC, naive); the scan starting nearest to it is used.
+    params : sequence of str
+        One map per entry: numeric columns (``v``, ``w_l``, ``p_l``, ``v_mad``) or flag columns (``gflg``,
+        ``gflg_conv``, ``gflg_kde``, ``gflg_ribiero``).
+    path : str or path, optional
+        Save the figure here; not saved when ``None``.
+    coords : ``"geo"`` or ``"aacgmv2"``
+        Coordinate frame of the maps.
+    projection : ``"auto"``, ``"polar"`` or ``"ortho"``
+        Map projection, see :class:`FanPlots`.
+    kind : str
+        Description of the data (``"fitacf++"``, ...) added to the panel title.
+    gflg_mask : str or None
+        Flag column whose value 1 is drawn gray in numeric maps; ``None`` for no mask.
+    dpi : int
+        Resolution.
+    geometry : ``"legacy"`` or ``"pydarn"``
+        Field-of-view implementation, see :func:`amgeo_sd.geo.radar_fov`.
+    altitude : float
+        Height of the range cells [km].
+    **kwargs : keyword arguments
+        Passed to :meth:`FanPlots.plot_fov`: ``add_colorbar``, ``vrange``, ``max_gate``, ``terminator``.
+
+    Returns
+    -------
+    FanPlots
+        The figure object (``.fig`` is the matplotlib figure); call ``.close()`` when done.
+    """
     fan = FanPlots(
         figsize=(5.5 * len(params) + 1, 5.5),
         nrows=1,

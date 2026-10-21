@@ -43,8 +43,50 @@ def run_dbscan_model(
     ``<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2`` plus ``params.toml`` / ``script.cmd`` to ``<out_base>/<sim_id>/<rad>/``.
     The echoes themselves are the raw fitacf echoes; the ``.fitacf.pp.bz2`` keeps every original record.
 
-    Returns a dict with ``scan_info``, ``n_scans``, ``n_echoes``, ``n_clusters`` (beam, label pairs without noise),
-    ``fraction_ground`` / ``fraction_noise`` of the echoes, ``out_dir``, ``nc_file`` / ``fitacf_file`` and ``scans``.
+    Parameters
+    ----------
+    rad : str
+        Three-letter radar code (``"bks"``).
+    start, end : datetime
+        Time window (UTC, naive); all scans inside it are labelled.
+    files : sequence of path, optional
+        Explicit fitacf files (not directories; expand them with :func:`amgeo_sd.io.expand_paths`). When ``None`` the
+        files are looked up under ``root``.
+    root : path, optional
+        Archive root (default ``$AMGEO_SD_DATA``).
+    ftype : str
+        ``"fitacf"`` or ``"fitacf3"``; used for the archive lookup and in messages.
+    params : Dbscan, optional
+        Clustering parameters (`[dbscan]` table of the [parameter reference](../PARAMETERS.md)); the defaults when
+        ``None``.
+    geometry : ``"legacy"`` or ``"pydarn"``
+        Field-of-view implementation stored in the NetCDF file, see :func:`amgeo_sd.geo.radar_fov`.
+    altitude : float
+        Cell height [km] of the geolocation.
+    out_base : path
+        Output base directory; results go to ``<out_base>/<sim_id>/<rad>/``.
+    sim_id : str
+        Name of the run, the second directory level.
+    write_netcdf : bool
+        Write ``<rad>_<start>_<end>.pp.nc``.
+    write_fitacf : bool
+        Write ``<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2``.
+    input_paths : sequence of path, optional
+        What to record as ``[input] paths`` in ``params.toml``.
+    argv : sequence of str, optional
+        Command line recorded in the output; ``sys.argv`` when ``None``.
+
+    Returns
+    -------
+    dict
+        ``scan_info``, ``n_scans``, ``n_echoes``, ``n_clusters`` (beam, label pairs without noise),
+        ``fraction_ground`` / ``fraction_noise`` of the echoes, ``out_dir``, ``nc_file`` / ``fitacf_file`` (when
+        written) and ``scans``.
+
+    Raises
+    ------
+    RuntimeError
+        When there is no data at ``start`` or no scan with echoes in the time range.
     """
     p = params or Dbscan()
     logger.info(f"dbscan model: {rad} {start} -> {end}")
@@ -152,7 +194,21 @@ def run_dbscan_model(
 
 
 def run_dbscan_from_settings(settings: Settings, argv: Sequence[str] | None = None) -> dict:
-    """:func:`run_dbscan_model` with the parameters of a :class:`~amgeo_sd.config.Settings`."""
+    """:func:`run_dbscan_model` with the parameters of a :class:`~amgeo_sd.config.Settings`.
+
+    Parameters
+    ----------
+    settings : Settings
+        Parameters from :func:`amgeo_sd.config.load_settings`; uses the `[run]`, `[input]`, `[dbscan]`, `[geometry]` and
+        `[output]` tables. Directories in `[input] paths` are expanded to files.
+    argv : sequence of str, optional
+        Command line recorded in the output; ``sys.argv`` when ``None``.
+
+    Returns
+    -------
+    dict
+        As :func:`run_dbscan_model`.
+    """
     from amgeo_sd.cli import expand_fitacf_paths
 
     r, i, o = settings.run, settings.input, settings.output

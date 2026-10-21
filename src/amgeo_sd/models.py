@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+__all__ = ["GATE_FIELDS", "Beam", "Scan"]
+
 #: Per-echo arrays; each has length ``len(beam.slist)``.
 GATE_FIELDS = ("slist", "v", "v_e", "w_l", "p_l", "gflg")
 
@@ -29,8 +31,26 @@ class Beam:
     ----------
     time : datetime.datetime
         Start time of the integration (UTC, naive).
-    bmnum, channel, cp, tfreq, nrang, rsep, frang, smsep, lagfr, mppul :
-        Radar/experiment metadata as stored in the fitacf record.
+    bmnum : int
+        Beam number (0-based, counted from the radar's first look direction).
+    channel : int
+        Channel of a stereo radar: 0 for a single-channel radar, 1 or 2 otherwise.
+    cp : int
+        Control-program (experiment) identifier.
+    tfreq : float
+        Transmit frequency [kHz].
+    nrang : int
+        Number of range gates.
+    rsep : float
+        Range separation [km].
+    frang : float
+        Distance to the first range gate [km].
+    smsep : float
+        Sample separation [microseconds].
+    lagfr : float
+        Lag to the first range [microseconds].
+    mppul : int
+        Number of pulses in the pulse sequence.
     noise_sky : float
         Sky noise level.
     intt_sc, intt_us : int
@@ -88,6 +108,19 @@ class Scan:
 
     ``stime``/``etime`` are the earliest/latest beam times, and ``freq``/``nsky``
     the mean transmit frequency and sky noise; all are refreshed by :meth:`update`.
+
+    Attributes
+    ----------
+    beams : list of Beam
+        The beams of the scan in time order.
+    s_mode : str
+        Scan mode label: ``"normal"``, ``"themis"`` (a special beam sounded between the regular ones).
+    stime, etime : datetime.datetime or None
+        Earliest and latest beam time of the scan; ``None`` until :meth:`update` has run.
+    freq : float
+        Mean transmit frequency of the beams [kHz].
+    nsky : float
+        Mean sky noise of the beams.
     """
 
     beams: list[Beam] = field(default_factory=list)
@@ -98,7 +131,13 @@ class Scan:
     nsky: float = np.nan
 
     def update(self) -> Scan:
-        """Refresh ``stime``, ``etime`` and mean ``freq``/``nsky`` from the beams."""
+        """Refresh ``stime``, ``etime`` and mean ``freq``/``nsky`` from the beams.
+
+        Returns
+        -------
+        Scan
+            The scan itself, so the call can be chained.
+        """
         if self.beams:
             self.stime = min(b.time for b in self.beams)
             self.etime = max(b.time for b in self.beams)

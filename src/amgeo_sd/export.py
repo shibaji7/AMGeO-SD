@@ -1,4 +1,4 @@
-"""Write fitacf++ products: an xarray/NetCDF4 dataset plus the run's ``params.json`` and ``script.cmd``.
+"""Write fitacf++ products: an xarray/NetCDF4 dataset plus the run's ``params.toml`` and ``script.cmd``.
 
 Layout follows the legacy ``utils.to_xarray`` so existing readers keep working::
 
@@ -21,6 +21,8 @@ import xarray as xr
 
 from amgeo_sd import __version__
 from amgeo_sd.models import Scan
+
+__all__ = ["output_dir", "save_run_metadata", "scans_to_dataset", "write_netcdf"]
 
 #: (variable, long_name, units, description) of the per-echo fields stored on ``Beam`` itself.
 ECHO_FIELDS = (
@@ -79,7 +81,22 @@ BEAM_FIELDS = (
 
 
 def output_dir(base: str | os.PathLike, sim_id: str, rad: str) -> Path:
-    """``<base>/<sim_id>/<rad>/`` (created), the legacy output layout."""
+    """``<base>/<sim_id>/<rad>/`` (created), the legacy output layout.
+
+    Parameters
+    ----------
+    base : str or path
+        Base output directory (``[run] out``).
+    sim_id : str
+        Run name (``[run] sim_id``).
+    rad : str
+        Radar code.
+
+    Returns
+    -------
+    Path
+        The directory, created if needed.
+    """
     path = Path(base) / sim_id / rad
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -96,6 +113,21 @@ def scans_to_dataset(scans: Sequence[Scan], fov: dict, attrs: dict | None = None
         Result of :func:`amgeo_sd.geo.radar_fov` (needs ``glat``, ``glon``, ``beams``, ``gates``; ``gazm`` optional).
     attrs : dict, optional
         Global attributes; values are made NetCDF safe (bool -> int, datetime -> ISO string, None -> "").
+
+    Returns
+    -------
+    xarray.Dataset
+        Dimensions ``scan_num``, ``sound`` (beam slot within a scan), ``beams`` (nbeams + 1) and ``gates`` (ngates + 1).
+        ``gdlat``, ``gdlon``, ``gdazm`` (beams, gates) hold the range-cell corner geolocation; per-beam variables
+        (``bmnum``, ``tfreq``, ``noise.sky``, ``scan``, ``nrang``, ``frang``, ``rsep``, ``time``, ``mppul``, ``intt.us``,
+        ``intt.sc``) have shape (scan_num, sound); per-echo variables (``v``, ``w_l``, ``p_l``, ``gflg`` and the extras
+        ``gflg_conv``, ``gflg_kde``, ``v_mad``, ``clabel``, ``cluster_tag``, ``gflg_ribiero`` that the beams carry) have
+        shape (scan_num, sound, gates), NaN where there is no echo.
+
+    Raises
+    ------
+    ValueError
+        When ``scans`` is empty or an echo lies outside the radar's range gates.
     """
     if not scans:
         raise ValueError("no scans to export")
@@ -208,7 +240,22 @@ def _netcdf_safe(attrs: dict) -> dict:
 
 
 def write_netcdf(ds: xr.Dataset, path: str | os.PathLike, complevel: int = 4) -> Path:
-    """Write ``ds`` as NetCDF4 with zlib compression on every numeric variable."""
+    """Write ``ds`` as NetCDF4 with zlib compression on every numeric variable.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset from :func:`scans_to_dataset`.
+    path : str or path
+        Output file (``<rad>_<start>_<end>.pp.nc``); parent directories are created.
+    complevel : int
+        zlib compression level, 1 (fast) to 9 (small).
+
+    Returns
+    -------
+    Path
+        The file written.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     enc = {k: {"zlib": True, "complevel": complevel} for k, v in ds.data_vars.items() if v.dtype.kind in "fiu"}
@@ -217,8 +264,17 @@ def write_netcdf(ds: xr.Dataset, path: str | os.PathLike, complevel: int = 4) ->
 
 
 def save_run_metadata(argv: Sequence[str], params_toml: str, out_dir: str | os.PathLike) -> None:
-    """Write ``script.cmd`` (the command line) and ``params.toml`` (annotated parameters, see
-    :func:`amgeo_sd.config.dump_settings_toml`) into ``out_dir``."""
+    """Write ``script.cmd`` (the command line) and ``params.toml`` (annotated parameters) into ``out_dir``.
+
+    Parameters
+    ----------
+    argv : sequence of str
+        The command line of the run (``sys.argv``).
+    params_toml : str
+        Text of ``params.toml``, normally from :func:`amgeo_sd.config.dump_settings_toml`.
+    out_dir : str or path
+        Existing output directory.
+    """
     out_dir = Path(out_dir)
     (out_dir / "script.cmd").write_text("python " + " ".join(argv) + "\n")
     (out_dir / "params.toml").write_text(params_toml)

@@ -14,7 +14,6 @@ from amgeo_sd.models import Beam
 def estimate_scan_info(beams: Sequence[Beam]) -> dict:
     """Scan period, themis special beam and scan mode from a stretch of beams.
 
-    Returns ``{"s_time": minutes, "t_beam": beam number or -1, "s_mode": "normal" | "themis"}``.
 
     The scan period is the median spacing of scan-start beams per channel (largest over channels),
     rounded as ``int((seconds + 10) / 60)``. Where the period exceeds one minute the beam sounded
@@ -22,6 +21,18 @@ def estimate_scan_info(beams: Sequence[Beam]) -> dict:
 
     Unlike the legacy code, which differenced only the last two scan starts of beams *with echoes*,
     all beams are used, so a scan-start beam without scatter cannot double the estimated period.
+
+    Parameters
+    ----------
+    beams : sequence of Beam
+        Beams of one radar over a stretch of time (at least two scans for a real estimate), including beams without
+        echoes.
+
+    Returns
+    -------
+    dict
+        ``{"s_time": scan period in minutes, "t_beam": themis special beam number or -1, "s_mode": "normal" or
+        "themis"}``. Defaults to one-minute normal scans, with a warning, when fewer than two scan starts exist.
     """
     default = {"s_time": 1, "t_beam": -1, "s_mode": "normal"}
     if not beams:

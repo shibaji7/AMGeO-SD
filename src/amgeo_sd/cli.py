@@ -143,6 +143,39 @@ def cmd_params(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_api(args: argparse.Namespace) -> int:
+    """Write the Python API reference (docs/API.md and docs/api/*.md) generated from the docstrings."""
+    from amgeo_sd import api_doc
+
+    gaps = api_doc.problems()
+    if gaps:
+        print("\n".join(gaps), file=sys.stderr)
+        return 1
+    for path in api_doc.write(args.out):
+        print(path)
+    return 0
+
+
+def cmd_init_config(args: argparse.Namespace) -> int:
+    """Write an annotated TOML parameter file with every setting at its default (to edit, then pass with --config)."""
+    from amgeo_sd.config import Settings, dump_settings_toml
+
+    text = dump_settings_toml(
+        Settings(), "AMGeO-SD parameters (defaults); see docs/PARAMETERS.md", tables=tuple(Settings().to_dict())
+    )
+    if args.out == "-":
+        sys.stdout.write(text)
+        return 0
+    path = Path(args.out)
+    if path.exists() and not args.force:
+        print(f"{path} exists; use --force to overwrite", file=sys.stderr)
+        return 1
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    print(path)
+    return 0
+
+
 def cmd_plot(args: argparse.Namespace) -> int:
     """Figures from fitacf or fitacf++ files (``plot rti`` / ``plot fov``). Parameters: --config TOML, then flags."""
     import matplotlib
@@ -273,6 +306,19 @@ def build_parser() -> argparse.ArgumentParser:
     d.set_defaults(func=cmd_dbscan)
 
     sub.add_parser("params", help=cmd_params.__doc__).set_defaults(func=cmd_params)
+
+    ic = sub.add_parser("init-config", help=cmd_init_config.__doc__)
+    ic.add_argument(
+        "-o", "--out", default="amgeo_sd.toml", help="file to write, or - for stdout (default amgeo_sd.toml)"
+    )
+    ic.add_argument("--force", action="store_true", help="overwrite an existing file")
+    ic.set_defaults(func=cmd_init_config)
+
+    api = sub.add_parser("api", help=cmd_api.__doc__)
+    api.add_argument(
+        "-o", "--out", default="docs", help="the docs directory to write API.md and api/ into (default docs)"
+    )
+    api.set_defaults(func=cmd_api)
 
     pl = sub.add_parser("plot", help=cmd_plot.__doc__)
     pl.add_argument("kind", choices=["rti", "fov"], help="rti: range-time plot of one beam; fov: map of one scan")

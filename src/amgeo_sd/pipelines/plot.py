@@ -25,7 +25,20 @@ def run_plot(kind: str, settings: Settings) -> str:
         RTI of ``plot.beam`` (``plot.params`` panels; with ``plot.compare`` the same beam from several files stacked),
         or a map of the scan nearest ``plot.time`` (one map per ``plot.params`` entry).
     settings : Settings
-        Uses the ``[plot]`` table; see ``configs/default.toml``.
+        Uses the ``[plot]`` table (inputs, beam, params, time, coords, ...) and ``[geometry]``; every key is in the
+        [parameter reference](../PARAMETERS.md).
+
+    Returns
+    -------
+    str
+        Path of the figure written, ``<plot.out>/<name>.<plot.format>``.
+
+    Raises
+    ------
+    ValueError
+        For an unknown ``kind``, or when the radar code cannot be determined.
+    RuntimeError
+        When the inputs hold no echoes in the time range.
     """
     if kind not in ("rti", "fov"):
         raise ValueError(f"unknown plot kind {kind!r}; use 'rti' or 'fov'")

@@ -23,6 +23,19 @@ def hardware(rad: str, date: dt.datetime | None = None) -> SimpleNamespace:
     Wraps ``pydarn.read_hdw_file`` (pydarn >= 4, hdw files bundled with pydarn) into the flat
     object :class:`~amgeo_sd.geo.fov.CalcFov` expects. ``boresight`` is the physical boresight;
     like the legacy code, the electronic beam offset is not applied.
+
+    Parameters
+    ----------
+    rad : str
+        Three-letter radar code (``"bks"``).
+    date : datetime, optional
+        UTC date selecting the hardware-file epoch; the current time when ``None``.
+
+    Returns
+    -------
+    types.SimpleNamespace
+        ``rad``, ``beams`` (number of beams), ``gates`` (number of range gates), ``beam_separation`` [deg],
+        ``rx_rise_time`` [us], ``geographic`` (latitude, longitude, altitude of the site) and ``boresight`` [deg].
     """
     h = pydarn.read_hdw_file(rad, date or dt.datetime.now(dt.UTC).replace(tzinfo=None))
     return SimpleNamespace(
@@ -49,6 +62,8 @@ def radar_fov(
 
     Parameters
     ----------
+    rad : str
+        Three-letter radar code (``"bks"``).
     date : datetime, optional
         Selects the hardware file epoch (radars are occasionally re-surveyed).
     frang, rsep : float
@@ -67,9 +82,9 @@ def radar_fov(
 
     Returns
     -------
-    dict with ``beams`` (0..nbeams), ``gates`` (0..ngates) and arrays of shape
-    ``(nbeams + 1, ngates + 1)``: ``glat``/``glon`` (cell corners, deg) and, if ``azm``,
-    ``gazm`` (deg, NaN in the last row/column).
+    dict
+        ``beams`` (0..nbeams), ``gates`` (0..ngates) and arrays of shape ``(nbeams + 1, ngates + 1)``:
+        ``glat``/``glon`` (cell corners, deg) and, if ``azm``, ``gazm`` (deg, NaN in the last row/column).
     """
     if backend not in BACKENDS:
         raise ValueError(f"geometry backend must be one of {BACKENDS}, not {backend!r}")

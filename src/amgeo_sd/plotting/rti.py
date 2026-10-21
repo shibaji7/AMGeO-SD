@@ -34,8 +34,21 @@ class RangeTimeIntervalPlot:
         Number of range gates shown (y axis 0..nrang).
     xlim : (datetime, datetime), optional
         Time axis limits (UT). Defaults to the span of the first table added.
+    fig_title : str
+        Figure title, drawn at the top left.
     num_subplots : int
         Number of panels; add them with the ``add_*`` methods.
+    figsize : (float, float), optional
+        Figure size in inches; default width 9, height 2.6 per panel.
+    dpi : int
+        Resolution of the figure on screen.
+
+    Examples
+    --------
+    >>> rti = RangeTimeIntervalPlot(nrang=75, num_subplots=2)
+    >>> rti.add_param(frame, beam=12, title="(a) velocity", param="v")
+    >>> rti.add_gsis(frame, beam=12, title="(b) flag", flag="gflg_kde", xlabel="Time [UT]")
+    >>> rti.save("rti.png")
     """
 
     def __init__(
@@ -102,7 +115,37 @@ class RangeTimeIntervalPlot:
         xlabel: str = "",
         ylabel: str = "Range gate",
     ):
-        """Colour-coded ``param`` (``v``, ``w_l``, ``p_l``, ``v_mad`` or any numeric column) versus time and gate."""
+        """Colour-coded ``param`` (``v``, ``w_l``, ``p_l``, ``v_mad`` or any numeric column) versus time and gate.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Echo table (:func:`amgeo_sd.io.load_frame`) with ``time``, ``bmnum``, ``slist`` and ``param``.
+        beam : int
+            Beam number to draw; ``ValueError`` when it has no echoes.
+        title : str
+            Panel title (drawn at the left).
+        param : str
+            Column to colour by. ``v``, ``w_l``, ``p_l`` and ``v_mad`` have preset ranges and colour maps; any other
+            numeric column needs ``vmin`` and ``vmax``.
+        vmin, vmax : float, optional
+            Colour range. Defaults: velocity -100..100 m/s, width 0..200 m/s, power 0..30 dB, v_mad 0..60 m/s.
+        step : float, optional
+            Width of a colour bin; default per parameter, or (``vmax`` - ``vmin``) / 8 for other columns.
+        cmap : str, optional
+            Matplotlib colour map name; default per parameter (``jet_r``, ``viridis``, ``plasma``, ``magma``).
+        label : str, optional
+            Colour-bar label; default the parameter's name and unit.
+        xlabel : str
+            x-axis label.
+        ylabel : str
+            y-axis label.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The new panel.
+        """
         spec = PARAMS.get(param)
         if spec is None and (vmin is None or vmax is None):
             raise ValueError(f"unknown parameter {param!r}: give vmin, vmax and step or use one of {sorted(PARAMS)}")
@@ -127,8 +170,31 @@ class RangeTimeIntervalPlot:
         xlabel: str = "",
         ylabel: str = "Range gate",
     ):
-        """Ionospheric / ground scatter classification from the flag column ``flag`` (``gflg``, ``gflg_conv``,
-        ``gflg_kde``, ``gflg_ribiero``): IS red, GS blue, US black, undetermined green."""
+        """Ionospheric / ground scatter classification from the flag column ``flag``.
+
+        IS (ionospheric) is red, GS (ground) blue, US (unclassified, -1) black and undetermined (2) green.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Echo table with ``time``, ``bmnum``, ``slist`` and the flag column.
+        beam : int
+            Beam number to draw.
+        title : str
+            Panel title.
+        flag : str
+            Flag column: ``gflg`` (fit / legacy median rule), ``gflg_conv``, ``gflg_kde`` (median model) or
+            ``gflg_ribiero`` (DBSCAN model).
+        xlabel : str
+            x-axis label.
+        ylabel : str
+            y-axis label.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The new panel.
+        """
         d = self._beam(df, beam)
         present = sorted({int(v) for v in d[flag].dropna().unique() if int(v) in FLAG_CLASSES})
         if not present:
@@ -161,6 +227,29 @@ class RangeTimeIntervalPlot:
 
         ``clabel`` of the median model is a *per-scan* DBSCAN label, not continuous in time, so it is rarely
         meaningful here.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Echo table with ``time``, ``bmnum``, ``slist`` and the label column.
+        beam : int
+            Beam number to draw.
+        title : str
+            Panel title.
+        column : str
+            Label column; ``ValueError`` when absent (cluster plots need the output of the DBSCAN model).
+        label_clusters : bool
+            Write the cluster number on large clusters (more than 250 echoes, or any cluster when there are fewer
+            than 50).
+        xlabel : str
+            x-axis label.
+        ylabel : str
+            y-axis label.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The new panel.
         """
         if column not in df:
             raise ValueError(f"column {column!r} not in the data; cluster plots need output of a clustering model")
@@ -187,7 +276,20 @@ class RangeTimeIntervalPlot:
 
     # ----------------------------------------------------------------- output
     def save(self, path: str | os.PathLike, dpi: int | None = None) -> str:
-        """Save the figure (format from the file extension) and return the path."""
+        """Save the figure (format from the file extension) and return the path.
+
+        Parameters
+        ----------
+        path : str or path
+            Output file (``.png``, ``.pdf``, ...); the directory is created.
+        dpi : int, optional
+            Resolution of the saved file; the figure's own resolution when ``None``.
+
+        Returns
+        -------
+        str
+            The path written.
+        """
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         self.fig.savefig(path, dpi=dpi, bbox_inches="tight")
         logger.info(f"saved RTI figure {path}")
@@ -213,7 +315,33 @@ def plot_rti(
     """One figure with a panel per entry of ``params`` for ``beam``.
 
     Entries are numeric columns (``v``, ``w_l``, ``p_l``, ``v_mad``), flag columns (``gflg``, ``gflg_conv``,
-    ``gflg_kde``, ``gflg_ribiero``) or ``cluster_tag``. ``kind`` (e.g. ``"fitacf 2.5"``, ``"fitacf++"``) goes into the title.
+    ``gflg_kde``, ``gflg_ribiero``) or ``cluster_tag``.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Echo table from :func:`amgeo_sd.io.load_frame` (raw fitacf or fitacf++, same columns).
+    beam : int
+        Beam number to draw.
+    params : sequence of str
+        One panel per entry, top to bottom.
+    path : str or path, optional
+        Save the figure here (the format follows the extension); not saved when ``None``.
+    rad : str
+        Radar code for the title.
+    nrang : int, optional
+        Number of range gates on the y axis; the largest ``nrang`` of the data when ``None``.
+    xlim : (datetime, datetime), optional
+        Time limits; the span of the data when ``None``.
+    kind : str
+        Description of the data (e.g. ``"fitacf 2.5"``, ``"fitacf++"``) appended to the title.
+    dpi : int
+        Resolution.
+
+    Returns
+    -------
+    RangeTimeIntervalPlot
+        The figure object (``.fig`` is the matplotlib figure); call ``.close()`` when done.
     """
     nrang = nrang or int(df["nrang"].max())
     t0 = pd.Timestamp(df["time"].min())
@@ -246,6 +374,30 @@ def plot_rti_compare(
     """Stack the same beam from several tables (e.g. raw fitacf above fitacf++), identical axes and colour scale.
 
     With ``flag`` (a flag column such as ``gflg``) each dataset also gets a classification panel.
+
+    Parameters
+    ----------
+    frames : mapping of str to pandas.DataFrame
+        Panel label (e.g. ``"raw fitacf"``) to echo table; drawn in this order.
+    beam : int
+        Beam number to draw.
+    param : str
+        Numeric column drawn for every dataset, with one shared colour scale.
+    path : str or path, optional
+        Save the figure here; not saved when ``None``.
+    rad : str
+        Radar code for the title.
+    nrang : int, optional
+        Number of range gates on the y axis; the largest ``nrang`` of the tables when ``None``.
+    flag : str, optional
+        Flag column; adds a classification panel under each dataset.
+    dpi : int
+        Resolution.
+
+    Returns
+    -------
+    RangeTimeIntervalPlot
+        The figure object; call ``.close()`` when done.
     """
     nrang = nrang or max(int(f["nrang"].max()) for f in frames.values())
     tmin = min(f["time"].min() for f in frames.values())

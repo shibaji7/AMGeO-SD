@@ -1,14 +1,33 @@
 # Using amgeo_sd
 
 Everything is driven from `make` (run `make help`), from the TOML parameter files in `configs/`, or from Python.
-Every parameter is described in the **[parameter reference](PARAMETERS.md)**; what is not ported yet is listed in [PORTING.md](PORTING.md).
+Every parameter is described in the **[parameter reference](PARAMETERS.md)**, every Python function in the **[API reference](API.md)**; what is not ported yet is listed in [PORTING.md](PORTING.md).
 Back to the [README](../README.md) or the [documentation index](README.md).
+
+## 0. Installed with pip, without make
+
+`pip install .` (or `pip install git+https://github.com/shibaji7/AMGeO-SD.git`) provides the `amgeo-sd` command, equal to
+`python -m amgeo_sd`. The `make` targets are shortcuts for it in a clone of the repository, so every row below does the same:
+
+| make | amgeo-sd |
+|---|---|
+| `make median RAD=bks START=... END=... INPUT=dir` | `amgeo-sd median -r bks -s ... -e ... -i dir` |
+| `make dbscan ...` | `amgeo-sd dbscan ...` |
+| `make plot-rti INPUT=f.pp.nc BEAM=12` | `amgeo-sd plot rti -i f.pp.nc -b 12` |
+| `make plot-fov INPUT=dir TIME=...` | `amgeo-sd plot fov -i dir -t ...` |
+| `make data-info DATA=dir` | `amgeo-sd info dir` |
+| `make config-show ...` | `amgeo-sd median --print-config ...` |
+| (a template to start from) | `amgeo-sd init-config -o my.toml` |
+| `make docs` | `amgeo-sd params`, `amgeo-sd api --out docs` (maintainers) |
+
+`amgeo-sd <command> --help` lists the options of a command; the matching TOML keys, flags and make variables are in the
+[parameter reference](PARAMETERS.md). In Python the same workflows are functions, see section 7.
 
 ## 1. Make targets
 
 | Target | What it does |
 |---|---|
-| `make env` / `env-update` / `env-remove` / `install` | conda env `amgeo` (Python 3.12) from `environment.yml`; editable install of the package |
+| `make env` / `env-update` / `env-remove` / `install` / `build` | conda env `amgeo` (Python 3.12) from `environment.yml`; editable install of the package; wheel + sdist into `dist/` |
 | `make data-unpack` / `data-info` / `data-clean` | unzip `tests/data/archives/*.zip`; summarise beams / scans / echoes per radar-day; delete unpacked folders that can be restored |
 | `make median` / `median-demo` | median-filter model: fitacf -> fitacf++ (`.nc` and `.fitacf.pp.bz2`) |
 | `make analyse-day RAD=bks` | whole-day comparison of the median filter and the DBSCAN model: runs both, prints retention / flag tables, draws figures (`examples/median_day_analysis/`) |
@@ -208,6 +227,12 @@ Legacy -> new names: `RangeTimeIntervalPlot.addParamPlot / addCluster / addGSIS`
 `FanPlots.plot_fov / plot_layfovs / add_instrument` are unchanged; the `sdcarto` GeoAxes class is replaced by functions inside `FanPlots`.
 
 ## 7. Python API
+
+The full reference, with a parameter table for every public function and class, is **[API.md](API.md)** (one page per
+sub-package under [`api/`](api/models.md)): [data model](api/models.md), [reading and writing](api/io.md),
+[median filter](api/filters.md), [DBSCAN / GMM](api/clustering.md), [Ribiero rule](api/scatter.md), [geometry](api/geo.md),
+[plotting](api/plotting.md), [pipelines](api/pipelines.md), [NetCDF export](api/export.md), [settings](api/config.md).
+It is generated from the docstrings (`make docs`). A quick overview:
 
 ```python
 from amgeo_sd.io import FitacfReader, load_scans, scans_to_dataframe, write_fitacfpp, scans_to_records

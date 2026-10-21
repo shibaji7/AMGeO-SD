@@ -200,7 +200,7 @@ def parameters_markdown() -> str:
         "# Parameter reference",
         "",
         "Every setting of `amgeo_sd`, with type, default, allowed values and how to set it. "
-        "Back to the [README](../README.md) or the [usage guide](USAGE.md); "
+        "Back to the [README](../README.md) or the [usage guide](USAGE.md); the Python functions are in the [API reference](API.md); "
         "example folders: [`configs/`](../configs/README.md), [`examples/`](../examples/median_day_analysis/README.md), "
         "[`tests/`](../tests/README.md), [`tests/data/`](../tests/data/README.md), [`_bkp/`](../_bkp/README.md).",
         "",

@@ -42,7 +42,22 @@ from amgeo_sd.scatter import ribiero_flags
 
 
 def parse_gmm_beams(spec: str, beams: Sequence[int], t_beam: int = -1) -> set[int]:
-    """Beams that get the Gaussian-mixture step: ``""`` none, ``"A"`` all, ``"T"`` the themis beam, ``"3,7"`` a list."""
+    """Beams that get the Gaussian-mixture step: ``""`` none, ``"A"`` all, ``"T"`` the themis beam, ``"3,7"`` a list.
+
+    Parameters
+    ----------
+    spec : str
+        The ``[dbscan] gmm`` setting.
+    beams : sequence of int
+        Beam numbers present in the data (used by ``"A"``).
+    t_beam : int
+        Themis special beam number, ``-1`` if none (used by ``"T"``).
+
+    Returns
+    -------
+    set of int
+        The selected beam numbers.
+    """
     spec = spec.strip()
     if not spec:
         return set()
@@ -54,7 +69,18 @@ def parse_gmm_beams(spec: str, beams: Sequence[int], t_beam: int = -1) -> set[in
 
 
 def box_cox_abs(values: np.ndarray) -> np.ndarray:
-    """Box-Cox transform of ``|values|`` (floor 1e-5); non-finite results and constant input become 0."""
+    """Box-Cox transform of ``|values|`` (floor 1e-5); non-finite results and constant input become 0.
+
+    Parameters
+    ----------
+    values : ndarray
+        Velocities [m/s]; only their magnitude is used.
+
+    Returns
+    -------
+    ndarray
+        The transformed values, same length as ``values``.
+    """
     x = np.abs(np.asarray(values, dtype=float))
     x[x <= 1e-5] = 1e-5
     try:
@@ -66,7 +92,21 @@ def box_cox_abs(values: np.ndarray) -> np.ndarray:
 
 
 def gmm_components(velocity: np.ndarray, p: Dbscan) -> np.ndarray:
-    """Gaussian-mixture component of every echo (all 0 when the beam has fewer than ``n_data_th`` echoes)."""
+    """Gaussian-mixture component of every echo (all 0 when the beam has fewer than ``n_data_th`` echoes).
+
+    Parameters
+    ----------
+    velocity : ndarray
+        Velocities [m/s] of the echoes of one beam; the mixture is fitted to the Box-Cox transform of their magnitude.
+    p : Dbscan
+        Settings; uses ``n_clusters`` (components), ``cov`` (covariance type) and ``n_data_th`` (minimum number of
+        echoes for the fit).
+
+    Returns
+    -------
+    ndarray of int
+        Component number (0 to ``n_clusters - 1``) of every echo.
+    """
     if len(velocity) < p.n_data_th:
         return np.zeros(len(velocity), dtype=int)
     x = box_cox_abs(velocity).reshape(-1, 1)
@@ -91,7 +131,27 @@ def _dbscan(gate: np.ndarray, scan: np.ndarray, p: Dbscan, themis: bool) -> np.n
 
 
 def cluster_beam(df: pd.DataFrame, p: Dbscan, use_gmm: bool = False, themis: bool = False) -> np.ndarray:
-    """Cluster labels of the echoes of one beam (``df`` has ``slist``, ``scnum`` and, for GMM, ``v``)."""
+    """Cluster labels of the echoes of one beam (``df`` has ``slist``, ``scnum`` and, for GMM, ``v``).
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Echoes of one beam and channel with the columns ``slist`` (range gate), ``scnum`` (scan number) and, when
+        ``use_gmm``, ``v`` (velocity).
+    p : Dbscan
+        Settings; uses ``eps``, ``eps_g``, ``eps_s``, ``min_samples``, ``tb_mult`` and, for GMM, ``n_clusters``,
+        ``cov`` and ``n_data_th``.
+    use_gmm : bool
+        Split the echoes into velocity components first and cluster inside each.
+    themis : bool
+        The beam is the themis special beam: ``min_samples`` is multiplied by ``tb_mult`` because it is sounded
+        more often.
+
+    Returns
+    -------
+    ndarray of int
+        One label per row of ``df``; ``-1`` is noise. With GMM the labels of different components do not collide.
+    """
     gate, scan = df["slist"].to_numpy(float), df["scnum"].to_numpy(float)
     if not use_gmm:
         return _dbscan(gate, scan, p, themis)
@@ -111,7 +171,26 @@ def cluster_beam(df: pd.DataFrame, p: Dbscan, use_gmm: bool = False, themis: boo
 def cluster_scans(scans: Sequence[Scan], scan_info: dict, p: Dbscan) -> Sequence[Scan]:
     """Add ``cluster_tag`` and ``gflg_ribiero`` to the echoes of ``scans`` (modified in place and returned).
 
-    ``scan_info`` is the result of :func:`amgeo_sd.io.summary.estimate_scan_info`; it selects the themis special beam.
+    Each (channel, beam) is clustered on its own in the plane (range gate / ``eps_g``, scan number / ``eps_s``), optionally
+    after splitting its velocities into Gaussian-mixture components; the cluster's speed and lifetime then decide
+    ionospheric or ground scatter (:func:`~amgeo_sd.scatter.ribiero_flags`). Cluster labels are unique within a beam only.
+    No echo is removed or changed.
+
+    Parameters
+    ----------
+    scans : sequence of Scan
+        Raw (unfiltered) scans; ``Beam.extra`` is modified in place.
+    scan_info : dict
+        Result of :func:`amgeo_sd.io.estimate_scan_info` (``s_mode``, ``t_beam``); selects the themis special beam.
+    p : Dbscan
+        Settings; uses ``eps``, ``eps_g``, ``eps_s``, ``min_samples``, ``tb_mult``, ``gmm``, ``n_clusters``, ``cov``,
+        ``n_data_th``, ``velocity_threshold`` and ``min_gate``. See the [parameter reference](../PARAMETERS.md).
+
+    Returns
+    -------
+    sequence of Scan
+        The same scans, each beam with ``cluster_tag`` (-1 noise) and ``gflg_ribiero`` (-1 unclassified, 0
+        ionospheric, 1 ground) in ``extra``.
     """
     frame = scans_to_dataframe(scans)
     tag = np.full(len(frame), -1, dtype=int)

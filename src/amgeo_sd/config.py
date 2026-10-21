@@ -26,6 +26,19 @@ from typing import Any
 
 from dateutil import parser as dateparser
 
+__all__ = [
+    "Dbscan",
+    "Geometry",
+    "Input",
+    "Median",
+    "Output",
+    "Plot",
+    "Run",
+    "Settings",
+    "dump_settings_toml",
+    "load_settings",
+]
+
 
 @dataclass
 class Run:
@@ -241,6 +254,27 @@ def load_settings(
 
     Relative ``input.paths``, ``input.root`` and ``run.out`` in a file are kept as written (relative
     to the working directory, as for command-line values).
+
+    Parameters
+    ----------
+    path : str or path, optional
+        A TOML parameter file (see ``configs/default.toml``); built-in defaults only when ``None``.
+    overrides : dict, optional
+        ``{table: {key: value}}`` applied last (these are the command-line flags / make variables); ``None`` values
+        are skipped and values are checked against the type of the default.
+    require : ``"median"``, ``"dbscan"`` or ``"plot"``
+        Which command the settings are for. ``"median"`` and ``"dbscan"`` need ``[run] rad``, ``start`` and ``end``
+        (and the command's own table is checked); ``"plot"`` needs ``[plot] inputs``.
+
+    Returns
+    -------
+    Settings
+        The merged and validated settings.
+
+    Raises
+    ------
+    ValueError
+        For unknown tables or keys, wrong value types or out-of-range values, and missing required keys.
     """
     settings = Settings()
     if path is not None:
@@ -375,6 +409,24 @@ def dump_settings_toml(
 
     ``provenance`` (command, software version, time) and ``result`` (output files, counts) are appended as
     the informational tables ``[provenance]`` and ``[result]``, which :func:`load_settings` ignores.
+
+    Parameters
+    ----------
+    settings : Settings
+        The settings to write.
+    title : str
+        First comment line of the file.
+    provenance : dict, optional
+        Entries of the ``[provenance]`` table (command, software version, creation time).
+    result : dict, optional
+        Entries of the ``[result]`` table (output files, counts).
+    tables : sequence of str
+        Settings tables to include, in this order.
+
+    Returns
+    -------
+    str
+        The TOML text, every key with its description as a comment.
     """
     lines = [
         f"# {title}",

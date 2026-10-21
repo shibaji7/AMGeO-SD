@@ -38,12 +38,34 @@ _NC_STANDARD = {"v", "w_l", "p_l", "gflg"}
 
 
 def is_netcdf(path: str | os.PathLike) -> bool:
-    """True for fitacf++ NetCDF files (by name)."""
+    """True for fitacf++ NetCDF files (by name).
+
+    Parameters
+    ----------
+    path : str or path
+        File name to test.
+
+    Returns
+    -------
+    bool
+        ``True`` when the name ends in ``.nc``.
+    """
     return str(path).endswith(".nc")
 
 
 def expand_paths(paths: Iterable[str | os.PathLike]) -> list[Path]:
-    """Files as given; directories replaced by the fitacf / fitacf++ / NetCDF files below them (sorted)."""
+    """Files as given; directories replaced by the fitacf / fitacf++ / NetCDF files below them (sorted).
+
+    Parameters
+    ----------
+    paths : iterable of str or path
+        Files and/or directories. A directory is searched recursively for names containing ``.fitacf`` and for ``.nc``.
+
+    Returns
+    -------
+    list of Path
+        The files, in the order given (files inside a directory sorted).
+    """
     out: list[Path] = []
     for p in map(Path, paths):
         if p.is_dir():
@@ -54,7 +76,21 @@ def expand_paths(paths: Iterable[str | os.PathLike]) -> list[Path]:
 
 
 def read_fitacfpp_nc(path: str | os.PathLike) -> tuple[list[Scan], dict]:
-    """Read a fitacf++ NetCDF into scans (one :class:`Scan` per ``scan_num``) and its global attributes."""
+    """Read a fitacf++ NetCDF into scans (one :class:`Scan` per ``scan_num``) and its global attributes.
+
+    Parameters
+    ----------
+    path : str or path
+        A ``.pp.nc`` file written by :func:`amgeo_sd.export.write_netcdf`.
+
+    Returns
+    -------
+    scans : list of Scan
+        The scans; cells without an echo (NaN ``v``) are dropped, per-echo extras such as ``gflg_kde`` go to
+        ``Beam.extra``, and ``v_e`` is NaN.
+    attrs : dict
+        The global attributes of the file (``rad``, ``software_version``, the parameters of the run, ...).
+    """
     with xr.open_dataset(path) as ds:
         ds = ds.load()
     extras = [n for n, v in ds.data_vars.items() if v.dims == ("scan_num", "sound", "gates") and n not in _NC_STANDARD]
@@ -104,8 +140,30 @@ def load_scans(
 ) -> tuple[list[Scan], dict]:
     """Scans from fitacf / fitacf++ files, restricted to beams with ``start <= time <= end``.
 
-    Returns ``(scans, meta)``; ``meta`` has ``kind`` (``"fitacf"`` or ``"fitacf++"``), ``rad`` (from the
-    attributes or the file name, else ``None``), ``fit_version`` and ``files``.
+    All inputs must be of one kind: fitacf (any version) and fitacf++ DMAP files may be mixed, NetCDF files may not be
+    mixed with the others.
+
+    Parameters
+    ----------
+    paths : iterable of str or path
+        Files or directories (see :func:`expand_paths`); fitacf, ``.fitacf.pp.bz2`` or ``.pp.nc``.
+    start, end : datetime, optional
+        Keep beams with ``start <= time <= end`` (UTC, naive); ``None`` leaves that side open.
+
+    Returns
+    -------
+    scans : list of Scan
+        The scans, in time order.
+    meta : dict
+        ``kind`` (``"fitacf"`` or ``"fitacf++"``), ``rad`` (from the attributes or the file name, else ``None``),
+        ``fit_version`` (e.g. ``"2.5"``) and ``files`` (the files read).
+
+    Raises
+    ------
+    FileNotFoundError
+        When no file is found.
+    ValueError
+        When NetCDF and fitacf files are mixed.
     """
     files = expand_paths(paths)
     if not files:
@@ -145,7 +203,24 @@ def load_scans(
 def load_frame(
     paths: Iterable[str | os.PathLike], start: dt.datetime | None = None, end: dt.datetime | None = None
 ) -> tuple[pd.DataFrame, dict]:
-    """:func:`load_scans` flattened to one row per echo (``scans_to_dataframe``), extras included."""
+    """:func:`load_scans` flattened to one row per echo (``scans_to_dataframe``), extras included.
+
+    Parameters
+    ----------
+    paths : iterable of str or path
+        Files or directories, see :func:`load_scans`.
+    start, end : datetime, optional
+        Keep echoes with ``start <= time <= end`` (UTC, naive).
+
+    Returns
+    -------
+    frame : pandas.DataFrame
+        One row per echo with the columns of :func:`scans_to_dataframe` and every ``Beam.extra`` array that all
+        beams share (``v_mad``, ``gflg_kde``, ``cluster_tag``, ...).
+    meta : dict
+        The ``meta`` of :func:`load_scans` plus ``nrang`` (largest number of range gates) and ``extra`` (the extra
+        columns found).
+    """
     scans, meta = load_scans(paths, start, end)
     extra = sorted(set.intersection(*[set(b.extra) for s in scans for b in s.beams if b.n_echoes] or [set()]))
     df = scans_to_dataframe(scans, extra=extra)

@@ -14,6 +14,7 @@ ROOT = Path(__file__).parent.parent
 MARKDOWN = [
     ROOT / "README.md",
     *sorted((ROOT / "docs").glob("*.md")),
+    *sorted((ROOT / "docs" / "api").glob("*.md")),
     ROOT / "configs" / "README.md",
     ROOT / "tests" / "README.md",
     ROOT / "tests" / "data" / "README.md",

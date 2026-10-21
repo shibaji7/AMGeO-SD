@@ -79,6 +79,17 @@ def read_fitacf_file(path: str | os.PathLike) -> list[dict]:
     Corrupted trailing data is tolerated: valid records are returned and a warning is logged with
     the byte offset where decoding stopped. ``pydarnio.read_fitacf`` rejects fields outside the
     fitacf standard, so a file it cannot parse (fitacf++) is re-read as generic DMAP.
+
+    Parameters
+    ----------
+    path : str or path
+        A fitacf, fitacf3 or fitacf++ file; ``.bz2`` and ``.gz`` are decompressed, anything else is read as it is.
+
+    Returns
+    -------
+    list of dict
+        One dictionary per record (beam), keyed by the DMAP field names (``"time.yr"``, ``"slist"``, ``"v"``, ...).
+        Empty when the file is unreadable.
     """
     path = Path(path)
     raw = _open_bytes(path)
@@ -127,7 +138,18 @@ def _fit_version(rec: dict) -> str:
 
 
 def record_to_beam(rec: dict) -> Beam:
-    """Convert one decoded fitacf record into a :class:`Beam`."""
+    """Convert one decoded fitacf record into a :class:`Beam`.
+
+    Parameters
+    ----------
+    rec : dict
+        A record as returned by :func:`read_fitacf_file`. Per-echo arrays that are absent get NaN (``gflg``: -1).
+
+    Returns
+    -------
+    Beam
+        The beam; fitacf++ arrays such as ``v_mad`` or ``gflg_kde`` are kept in ``Beam.extra``.
+    """
     kwargs: dict = {}
     for key, attr in _SCALARS.items():
         if key in rec:
@@ -164,6 +186,18 @@ def records_to_beams(
 
     Beams with no scatter are kept: they carry the scan-start flag that
     :func:`beams_to_scans` relies on.
+
+    Parameters
+    ----------
+    records : iterable of dict
+        Decoded records, see :func:`read_fitacf_file`.
+    start, end : datetime, optional
+        Inclusive time window (UTC); ``None`` leaves that side open.
+
+    Returns
+    -------
+    list of Beam
+        The beams inside the window, in the order of ``records``.
     """
     beams = []
     for rec in records:
@@ -178,6 +212,18 @@ def beams_to_scans(beams: Sequence[Beam], s_mode: str = "normal") -> list[Scan]:
 
     A new scan opens at every beam with ``scan == 1`` whose time differs from the
     previous beam's (dual-channel radars repeat the flag at the same time).
+
+    Parameters
+    ----------
+    beams : sequence of Beam
+        Beams in time order.
+    s_mode : str
+        Scan mode label stored on every scan (``"normal"`` or ``"themis"``; see :func:`estimate_scan_info`).
+
+    Returns
+    -------
+    list of Scan
+        The scans, each with ``stime``/``etime`` set; empty when there are no beams.
     """
     if not beams:
         return []
@@ -229,8 +275,21 @@ def _empty_frame(columns: Sequence[str]) -> pd.DataFrame:
 def beams_to_dataframe(beams: Iterable[Beam], extra: Sequence[str] = ()) -> pd.DataFrame:
     """One row per echo, with the beam metadata repeated on each row.
 
-    ``extra`` names additional per-echo arrays stored in ``Beam.extra`` to include. Beams without
-    echoes contribute no rows.
+    Beams without echoes contribute no rows.
+
+    Parameters
+    ----------
+    beams : iterable of Beam
+        The beams to tabulate.
+    extra : sequence of str
+        Names of additional per-echo arrays of ``Beam.extra`` to include as columns (``"v_mad"``, ``"gflg_kde"``, ...).
+        Every beam must hold them.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``time bmnum channel cp tfreq noise_sky scan nrang rsep frang smsep lagfr mppul intt_sc intt_us``
+        (beam metadata), ``slist v v_e w_l p_l gflg`` (echo values) and the ``extra`` columns.
     """
     columns = list(_BEAM_COLUMNS) + list(GATE_FIELDS) + list(extra)
     frames = []
@@ -249,8 +308,22 @@ def beams_to_dataframe(beams: Iterable[Beam], extra: Sequence[str] = ()) -> pd.D
 
 
 def scans_to_dataframe(scans: Iterable[Scan], extra: Sequence[str] = (), start_scnum: int = 0) -> pd.DataFrame:
-    """Like :func:`beams_to_dataframe` plus ``scnum`` (scan counter) and ``sbnum``
-    (beam index inside the scan)."""
+    """Like :func:`beams_to_dataframe` for whole scans, plus ``scnum`` (scan counter) and ``sbnum`` (beam index in the scan).
+
+    Parameters
+    ----------
+    scans : iterable of Scan
+        The scans to tabulate.
+    extra : sequence of str
+        Names of additional per-echo arrays of ``Beam.extra`` to include as columns.
+    start_scnum : int
+        Value of ``scnum`` for the first scan; use it to continue the numbering over several calls.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The columns of :func:`beams_to_dataframe` plus ``scnum`` and ``sbnum``.
+    """
     frames = []
     for i, scan in enumerate(scans):
         for j, beam in enumerate(scan.beams):
@@ -274,16 +347,28 @@ def find_fitacf_files(
 ) -> list[Path]:
     """Locate archive files holding data between ``start`` and ``end``.
 
-    Parameters
-    ----------
-    root : path, optional
-        Archive root; defaults to ``$AMGEO_SD_DATA``.
-    layout : str
-        Glob below ``root`` with ``{year}``, ``{ftype}``, ``{rad}``, ``{date}`` fields.
-
     A file named ``YYYYMMDD.HHMM.SS.*`` is selected when its two-hour span
     overlaps ``[start, end]``. The day before ``start`` is searched too because
-    a file can begin before midnight.
+    a file can begin before midnight. fitacf++ files (``.fitacf.pp.bz2``) are never returned.
+
+    Parameters
+    ----------
+    rad : str
+        Three-letter radar code (``"bks"``).
+    start, end : datetime
+        Time window (UTC, naive).
+    ftype : str
+        ``"fitacf"`` or ``"fitacf3"``; becomes part of the directory and file pattern.
+    root : path, optional
+        Archive root; defaults to ``$AMGEO_SD_DATA``. A ``ValueError`` is raised when neither is set.
+    layout : str
+        Glob below ``root`` with ``{year}``, ``{ftype}``, ``{rad}``, ``{date}`` fields; the default is
+        ``{year}/{ftype}/{rad}/{date}.*{ftype}*``.
+
+    Returns
+    -------
+    list of Path
+        Matching files, sorted.
     """
     root = root if root is not None else os.environ.get(DATA_ROOT_ENV)
     if root is None:
@@ -323,9 +408,14 @@ class FitacfReader:
     ftype : str
         ``"fitacf"`` or ``"fitacf3"``; only used for file discovery.
     files : sequence of path, optional
-        Explicit files to read; skips discovery.
+        Explicit files to read (not directories: expand those with :func:`expand_paths`); skips discovery.
     root : path, optional
         Archive root for discovery (default ``$AMGEO_SD_DATA``).
+
+    Examples
+    --------
+    >>> reader = FitacfReader("bks", datetime(2025, 2, 8, 3), datetime(2025, 2, 8, 4), files=expand_paths(["tests/data/bks_20250208"]))
+    >>> scans = reader.scans()
     """
 
     def __init__(
@@ -346,7 +436,13 @@ class FitacfReader:
         self._records: list[dict] | None = None
 
     def records(self) -> list[dict]:
-        """Raw decoded records inside the window, time-ordered. Decoded once and cached."""
+        """Raw decoded records inside the window, time-ordered. Decoded once and cached.
+
+        Returns
+        -------
+        list of dict
+            The records of :func:`read_fitacf_file` with ``start <= time <= end``.
+        """
         if self._records is None:
             recs: list[dict] = []
             for f in self.files:
@@ -357,9 +453,26 @@ class FitacfReader:
         return self._records
 
     def beams(self) -> list[Beam]:
-        """All beams in the window, time-ordered."""
+        """All beams in the window, time-ordered.
+
+        Returns
+        -------
+        list of Beam
+            One beam per record, including beams without echoes.
+        """
         return records_to_beams(self.records())
 
     def scans(self, s_mode: str = "normal") -> list[Scan]:
-        """All scans in the window (see :func:`beams_to_scans`)."""
+        """All scans in the window (see :func:`beams_to_scans`).
+
+        Parameters
+        ----------
+        s_mode : str
+            Scan mode label stored on every scan (``"normal"`` or ``"themis"``).
+
+        Returns
+        -------
+        list of Scan
+            The scans of the window, in time order.
+        """
         return beams_to_scans(self.beams(), s_mode)

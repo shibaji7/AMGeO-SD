@@ -40,7 +40,10 @@ FLAG_CLASSES = {-1: ("black", "US"), 0: ("red", "IS"), 1: ("blue", "GS"), 2: ("g
 
 
 def apply_style() -> None:
-    """Small, consistent defaults (serif tick labels as in the legacy figures)."""
+    """Set small, consistent matplotlib defaults (font sizes, bold titles and labels) for the figures of this package.
+
+    The plotting functions call it themselves; call it yourself only to get the same look in your own figures.
+    """
     matplotlib.rcParams.update(
         {
             "font.size": 10,
@@ -55,8 +58,20 @@ def apply_style() -> None:
 
 
 def get_cluster_cmap(n_clusters: int, plot_noise: bool = False) -> mcolors.ListedColormap:
-    """Qualitative colour map with ``n_clusters`` shuffled colours (same shuffle as the legacy code);
-    the first entry is black when ``plot_noise`` so label -1 (noise) is drawn black."""
+    """Qualitative colour map with ``n_clusters`` shuffled colours (same shuffle as the legacy code).
+
+    Parameters
+    ----------
+    n_clusters : int
+        Number of colours (cluster labels) the map must cover; it repeats the base colours when more are needed.
+    plot_noise : bool
+        Make the first entry black so that label -1 (noise) is drawn black.
+
+    Returns
+    -------
+    matplotlib.colors.ListedColormap
+        The colour map, named ``"cluster"``.
+    """
     base = plt.cm.gist_rainbow
     colors = [base(i) for i in range(base.N)]
     while len(colors) < n_clusters:

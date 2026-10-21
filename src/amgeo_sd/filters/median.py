@@ -66,6 +66,16 @@ def discard_repeating_beams(scan: Scan) -> Scan:
 
     Beams are ordered by beam number; when a beam number is sounded more than once in a scan
     (e.g. a themis special beam or two channels) the first one in file order is kept.
+
+    Parameters
+    ----------
+    scan : Scan
+        The scan to reduce (not modified).
+
+    Returns
+    -------
+    Scan
+        A new scan with at most one beam per beam number, ordered by beam number.
     """
     out = Scan(s_mode=scan.s_mode, stime=scan.stime, etime=scan.etime)
     seen: set[int] = set()
@@ -93,6 +103,23 @@ def kde_flag(gfx: np.ndarray, pbnd: Sequence[float], pth: float, rng: np.random.
     draws in [0.01, 0.05] and ones by draws in [0.95, 0.99], a Beta(a, b) with fixed ``loc=0,
     scale=1`` is fitted, and ``1 - cdf(pth)`` (probability of ground scatter) is mapped to
     0 / 1 / 2 with ``pbnd``.
+
+    Parameters
+    ----------
+    gfx : ndarray
+        0/1 ground-scatter flags of the neighbours, each repeated ``weight`` times, NaN entries already removed.
+    pbnd : (float, float)
+        ``(lth, uth)``: a probability at or below ``lth`` gives 0 (ionospheric), at or above ``uth`` gives 1 (ground),
+        in between 2 (undetermined).
+    pth : float
+        Point of the fitted Beta distribution at which the probability of ground scatter is evaluated.
+    rng : numpy.random.Generator
+        Source of the jitter; pass a seeded generator for reproducible flags.
+
+    Returns
+    -------
+    float
+        0.0 ionospheric, 1.0 ground, 2.0 undetermined (also when the fit fails).
     """
     x = np.asarray(gfx, dtype=float).copy()
     zeros, ones = x == 0, x == 1
@@ -110,7 +137,23 @@ def kde_flag(gfx: np.ndarray, pbnd: Sequence[float], pth: float, rng: np.random.
 
 
 def conv_flag(weighted_ground: float, total_weight: float, pbnd: Sequence[float]) -> float:
-    """Conventional flag: ground-scatter weight fraction mapped to 0 / 1 / 2."""
+    """Conventional flag: ground-scatter weight fraction mapped to 0 / 1 / 2.
+
+    Parameters
+    ----------
+    weighted_ground : float
+        Total weight of the neighbours flagged ground scatter.
+    total_weight : float
+        Total weight of all existing neighbours (occupied or not).
+    pbnd : (float, float)
+        ``(lth, uth)``: a fraction at or below ``lth`` gives 0 (ionospheric), at or above ``uth`` gives 1 (ground),
+        in between 2 (undetermined).
+
+    Returns
+    -------
+    float
+        0.0 ionospheric, 1.0 ground, 2.0 undetermined.
+    """
     return _flag_from_probability(weighted_ground / total_weight, pbnd)
 
 
@@ -119,6 +162,20 @@ def cluster_scan(scan: Scan, eps: float = 2, min_samples: int = 5) -> Scan:
 
     The labels are stored per beam in ``beam.extra["clabel"]`` (``-1`` is noise). The scan is
     modified in place and returned.
+
+    Parameters
+    ----------
+    scan : Scan
+        A filtered scan with unique beams.
+    eps : float
+        DBSCAN neighbourhood radius in units of beams / gates (distance in the (beam number, gate) plane).
+    min_samples : int
+        Minimum number of echoes within ``eps`` (the echo itself included) for a core point.
+
+    Returns
+    -------
+    Scan
+        The same scan, with ``clabel`` set on every beam.
     """
     points = [np.column_stack([np.full(b.n_echoes, b.bmnum), b.slist]) for b in scan.beams]
     if not points or sum(len(p) for p in points) == 0:
@@ -152,10 +209,18 @@ class MedianFilter:
         Run DBSCAN (``eps``, ``min_samples``) on each filtered scan to fill ``clabel``.
     seed : int
         Seed for the KDE jitter.
+    eps : float
+        DBSCAN radius for ``clabel`` in beams / gates; only used when ``cluster`` is true.
+    min_samples : int
+        DBSCAN minimum cluster size for ``clabel``; only used when ``cluster`` is true.
     edge_gates : ``"legacy"`` or ``"missing"``
         Treatment of neighbour gates outside ``0..nrang-1``: ``"legacy"`` counts them as empty cells, which
         penalises the first and last gate (a cell there can reach at most 73% of the weight, so it is dropped at any
         threshold above 0.73); ``"missing"`` leaves them out of the weight like missing beams.
+
+    Examples
+    --------
+    >>> filtered = MedianFilter(thresh=0.6, kde=False).filter_scans(scans, n_jobs=2)
     """
 
     def __init__(
@@ -188,7 +253,23 @@ class MedianFilter:
         """Filter the middle one of three consecutive scans.
 
         The scans must already have unique beams (see :func:`discard_repeating_beams`).
-        Returns a new :class:`~amgeo_sd.models.Scan`; beams without surviving echoes are omitted.
+        Beams without surviving echoes are omitted.
+
+        Parameters
+        ----------
+        scans : sequence of Scan
+            Exactly three consecutive scans (previous, current, next); the middle one is filtered.
+
+        Returns
+        -------
+        Scan
+            A new scan holding the surviving echoes with ``v``, ``w_l``, ``p_l`` as neighbourhood medians and
+            ``v_mad``, ``gflg_conv``, ``gflg_kde``, ``clabel`` in ``Beam.extra``.
+
+        Raises
+        ------
+        ValueError
+            When ``scans`` does not hold exactly three scans.
         """
         if len(scans) != 3:
             raise ValueError("filter_window needs exactly 3 scans")
@@ -250,7 +331,20 @@ class MedianFilter:
         """Filter every interior scan of a time-ordered scan list.
 
         ``scans[0]`` and ``scans[-1]`` only serve as neighbours; the result has
-        ``len(scans) - 2`` scans. Beams are de-duplicated first. ``n_jobs > 1`` uses processes.
+        ``len(scans) - 2`` scans. Beams are de-duplicated first.
+
+        Parameters
+        ----------
+        scans : sequence of Scan
+            Time-ordered scans of one radar.
+        n_jobs : int
+            Number of worker processes; 1 runs in this process. Processes are started with ``spawn``, so a script
+            that uses ``n_jobs > 1`` needs an ``if __name__ == "__main__":`` guard.
+
+        Returns
+        -------
+        list of Scan
+            The filtered interior scans (``scans[1:-1]``), in order.
         """
         scans = [discard_repeating_beams(s) for s in scans]
         windows = [scans[i - 1 : i + 2] for i in range(1, len(scans) - 1)]

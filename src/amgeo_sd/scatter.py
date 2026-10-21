@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import numpy as np
 
+__all__ = ["ribiero_flags", "ribiero_gs_flag"]
+
 #: (minimum duration in hours, maximum high/low velocity ratio for ionospheric scatter), checked in order.
 #: Clusters shorter than an hour use 0.5 (Burrell et al., 2018); longer than 14 h use 0.15 (an addition of the
 #: legacy code, 0.2 in the original paper).
@@ -20,6 +22,20 @@ def ribiero_gs_flag(abs_velocity: np.ndarray, duration_hours: float, vth: float)
 
     ``R`` is the number of echoes faster than ``vth`` over the number at or below it (``1`` if none are slow);
     the cluster is ionospheric when ``R`` exceeds the limit belonging to its duration, see ``RIBIERO_RATIOS``.
+
+    Parameters
+    ----------
+    abs_velocity : ndarray
+        Speeds ``|v|`` [m/s] of the cluster's echoes.
+    duration_hours : float
+        Time span between the first and last echo of the cluster [h].
+    vth : float
+        Speed [m/s] that separates "fast" from "slow" echoes.
+
+    Returns
+    -------
+    bool
+        ``True`` for ground scatter, ``False`` for ionospheric scatter.
     """
     high = int(np.sum(abs_velocity > vth))
     low = int(np.sum(abs_velocity <= vth))
@@ -38,6 +54,26 @@ def ribiero_flags(
     Echoes with label ``-1`` (DBSCAN noise) and echoes in gates below ``min_gate`` (default 7) are unclassified.
     All echoes of a cluster get the cluster's flag; its duration is the time span of its echoes.
     Pass one beam (and channel) at a time: labels are only unique within a beam.
+
+    Parameters
+    ----------
+    cluster : ndarray of int
+        Cluster label of every echo; ``-1`` is noise.
+    velocity : ndarray
+        Line-of-sight velocity [m/s] of every echo.
+    time : ndarray of datetime64
+        Time of every echo.
+    slist : ndarray of int
+        Range gate of every echo.
+    vth : float
+        Speed [m/s] separating fast from slow echoes (``[dbscan] velocity_threshold``).
+    min_gate : int
+        Echoes in gates below this are not classified (``[dbscan] min_gate``).
+
+    Returns
+    -------
+    ndarray of int8
+        One flag per echo: -1 unclassified, 0 ionospheric, 1 ground.
     """
     labels = np.asarray(cluster).copy()
     labels[np.asarray(slist) < min_gate] = -1

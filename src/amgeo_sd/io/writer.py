@@ -47,7 +47,20 @@ _EXTRA_DTYPES = {
 
 
 def fitacfpp_name(rad: str, start: dt.datetime) -> str:
-    """``YYYYMMDD.HHMM.SS.<rad>.fitacf.pp.bz2``: the archive naming with the fitacf++ suffix."""
+    """``YYYYMMDD.HHMM.SS.<rad>.fitacf.pp.bz2``: the archive naming with the fitacf++ suffix.
+
+    Parameters
+    ----------
+    rad : str
+        Three-letter radar code.
+    start : datetime
+        Time stamp of the file, normally the first record.
+
+    Returns
+    -------
+    str
+        The file name (no directory).
+    """
     return f"{start:%Y%m%d.%H%M.%S}.{rad}{FITACFPP_SUFFIX}"
 
 
@@ -56,7 +69,23 @@ def _fill(dtype: np.dtype) -> float | int:
 
 
 def beam_to_record(beam: Beam, template: dict) -> dict:
-    """Build the fitacf++ record of ``beam`` from the original ``template`` record."""
+    """Build the fitacf++ record of ``beam`` from the original ``template`` record.
+
+    Parameters
+    ----------
+    beam : Beam
+        The processed beam (its ``slist``, ``v``, ``w_l``, ``p_l``, ``gflg`` and ``extra`` arrays replace the template's).
+    template : dict
+        The raw record of the same sounding; all its other fields are kept.
+
+    Returns
+    -------
+    dict
+        A DMAP record with every field of the template. ``slist``, ``v``, ``w_l``, ``p_l`` and ``gflg`` are the beam's;
+        ``v_e`` is its ``v_mad`` when present; ``qflg`` is 1 for cells the filter added; other per-echo arrays are
+        carried over for gates that held an echo in the template (NaN or 0 for added cells); ``v_mad``, ``gflg_conv``,
+        ``gflg_kde``, ``clabel``, ``cluster_tag`` and ``gflg_ribiero`` are added when the beam has them.
+    """
     rec = dict(template)
     old_slist = np.atleast_1d(np.asarray(template["slist"])).astype(int) if "slist" in template else np.empty(0, int)
     where = {int(g): i for i, g in enumerate(old_slist)}
@@ -98,11 +127,28 @@ def scans_to_records(
 ) -> list[dict]:
     """fitacf++ records for the beams of ``scans``, in time order.
 
-    ``source_records`` are the raw records the scans were derived from (see
-    :meth:`amgeo_sd.io.FitacfReader.records`); a beam without a matching record raises ``KeyError``.
-    ``model`` is stored in ``amgeo.model``. By default beams without echoes are dropped and the scan flag is re-set on
-    the first kept beam of every scan (filters that remove beams); with ``keep_empty`` every beam is written and the
-    original scan flags are kept (models that only label the raw echoes).
+    By default beams without echoes are dropped and the scan flag is re-set on the first kept beam of every scan
+    (filters that remove beams); with ``keep_empty`` every beam is written and the original scan flags are kept
+    (models that only label the raw echoes).
+
+    Parameters
+    ----------
+    scans : sequence of Scan
+        Processed scans.
+    source_records : sequence of dict
+        The raw records the scans were derived from (:meth:`FitacfReader.records`); a beam without a matching record
+        (same time, beam number and channel) raises ``KeyError``.
+    command : str
+        Text for ``origin.command`` (the command line of the run); ``"amgeo_sd"`` when empty.
+    model : str
+        Stored in ``amgeo.model``: ``"median"`` or ``"dbscan"``.
+    keep_empty : bool
+        Write beams without echoes too and keep the original scan flags.
+
+    Returns
+    -------
+    list of dict
+        One DMAP record per written beam, sorted by time.
     """
     index = {(_record_time(r), int(r["bmnum"]), int(r.get("channel", 0))): r for r in source_records}
     now = dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M:%S")
@@ -132,6 +178,18 @@ def write_fitacfpp(path: str | os.PathLike, records: Sequence[dict]) -> Path:
 
     ``pydarnio.write_dmap`` *appends* to an existing file, so the data go to a temporary file that
     replaces ``path`` atomically; re-running a pipeline therefore never duplicates records.
+
+    Parameters
+    ----------
+    path : str or path
+        Output file (use :func:`fitacfpp_name`); parent directories are created.
+    records : sequence of dict
+        Records from :func:`scans_to_records`.
+
+    Returns
+    -------
+    Path
+        The file written.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -31,7 +31,33 @@ in 2020-2022; the original is frozen in [`_bkp/`](_bkp/README.md) and what is st
 | RTI and field-of-view plots, geographic or AACGM | done |
 | radar geometry: original `CalcFov` or pydarn 4 | done, switchable |
 | TOML parameter files, generated parameter reference | done |
+| installable package (`pip install .`), `amgeo-sd` command, generated Python API reference | done |
 | beam-gate-time clustering model and the plots that need it | not ported yet, see [`docs/PORTING.md`](docs/PORTING.md) |
+
+## Install
+
+For use, not development (Python 3.12 or newer; cartopy, aacgmv2 and pydarn are installed with it):
+
+```bash
+pip install git+https://github.com/shibaji7/AMGeO-SD.git     # or, inside a clone:  pip install .
+amgeo-sd --help                                              # the same as: python -m amgeo_sd --help
+```
+
+The `amgeo-sd` command does everything the `make` targets do, and the package can be imported (`import amgeo_sd`):
+
+```bash
+amgeo-sd init-config -o my.toml        # annotated file with every parameter at its default; edit it, then:
+amgeo-sd median -c my.toml -r bks -s 2025-02-08T03:00 -e 2025-02-08T04:00 -i /path/to/fitacf/files
+amgeo-sd plot rti -i data/outputs/L100/bks/bks_202502080300_202502080400.pp.nc -b 12
+```
+
+```python
+from amgeo_sd.io import FitacfReader, expand_paths
+from amgeo_sd.filters import MedianFilter
+```
+
+What each function takes and returns is in the **[Python API reference](docs/API.md)**; each command-line option and TOML key is in
+the [parameter reference](docs/PARAMETERS.md). The `make` targets below are a convenience for a clone of this repository.
 
 ## Quick start
 
@@ -114,7 +140,8 @@ src/amgeo_sd/          the package
   geo/                   radar field of view (legacy CalcFov, pydarn 4), coordinates
   plotting/              RTI and field-of-view plots
   pipelines/             median, dbscan and plot workflows;  export.py: NetCDF + params.toml
-  config.py              TOML parameters;  params_doc.py: generates docs/PARAMETERS.md;  cli.py: python -m amgeo_sd
+  config.py              TOML parameters;  cli.py: amgeo-sd / python -m amgeo_sd
+  params_doc.py, api_doc.py   generate docs/PARAMETERS.md and docs/API.md + docs/api/
 configs/               TOML parameter files (configs/README.md)
 docs/                  documentation (docs/README.md is the index)
 examples/              whole-day analysis of the two models
@@ -140,7 +167,7 @@ presenting results; see <https://superdarn.vt.edu/data-acknowledgement/>.
 make test         # everything (about 4 minutes); make test-unit is the fast subset without real data
 make lint         # ruff: errors, import order, missing docstrings
 make format       # ruff format
-make docs         # regenerate docs/PARAMETERS.md after changing a setting (a test fails when it is stale)
+make docs         # regenerate docs/PARAMETERS.md and docs/API.md after changing a setting or a docstring (tests fail when stale)
 ```
 
 Work happens on `main`. Ported legacy modules (`geo/geopack.py`, `geo/fov.py`, `geo/vheight.py`) keep their original
@@ -152,6 +179,7 @@ style and are excluded from formatting.
 |---|---|
 | [`docs/USAGE.md`](docs/USAGE.md) | how to run each model and plot, what the outputs contain, how the choices were made |
 | [`docs/PARAMETERS.md`](docs/PARAMETERS.md) | every parameter: type, default, allowed values, flag, make variable |
+| [`docs/API.md`](docs/API.md) | the Python API: every public function and class, with a table of its parameters |
 | [`docs/PORTING.md`](docs/PORTING.md) | what of the legacy code is still to be ported |
 | [`configs/README.md`](configs/README.md) | the TOML files and how to write your own |
 | [`examples/median_day_analysis/README.md`](examples/median_day_analysis/README.md) | the whole-day comparison of the two models |

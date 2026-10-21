@@ -50,13 +50,74 @@ def run_median_filter(
     Input is either ``files`` or the archive ``root`` (default ``$AMGEO_SD_DATA``); ``input_paths`` only
     changes what is recorded in ``params.toml`` (the directories the files were expanded from). Scans whose start
     lies in ``[start, end]`` are filtered; the neighbouring scans needed by the 3-scan window are read
-    from just outside it. See :class:`amgeo_sd.filters.MedianFilter` for the algorithm and parameters.
+    from just outside it. See :class:`amgeo_sd.filters.MedianFilter` for the algorithm. Every filter parameter has
+    the meaning and allowed values given in the [parameter reference](../PARAMETERS.md) (`[median]` table).
+
+    Parameters
+    ----------
+    rad : str
+        Three-letter radar code (``"bks"``).
+    start, end : datetime
+        Time window (UTC, naive). Scans starting inside it are written.
+    files : sequence of path, optional
+        Explicit fitacf files (not directories; expand them with :func:`amgeo_sd.io.expand_paths`). When ``None`` the
+        files are looked up under ``root``.
+    root : path, optional
+        Archive root (default ``$AMGEO_SD_DATA``) with the layout ``<year>/<ftype>/<rad>/<YYYYMMDD>.*``.
+    ftype : str
+        ``"fitacf"`` or ``"fitacf3"``; used for the archive lookup and in messages.
+    thresh : float
+        Share of the neighbour weight that must hold an echo for a cell to survive, 0 to 1.
+    pth : float
+        Beta-distribution cut of ``gflg_kde``.
+    lth, uth : float
+        Lower and upper probability bounds of ``gflg_conv`` / ``gflg_kde``: at or below ``lth`` ionospheric, at or
+        above ``uth`` ground, between them undetermined (2).
+    kde : bool
+        Compute ``gflg_kde`` (slow; NaN when ``False``).
+    cluster : bool
+        Compute the per-scan DBSCAN label ``clabel``.
+    eps, min_samples : float, int
+        DBSCAN radius and minimum size of ``clabel``.
+    n_jobs : int
+        Worker processes of the filter (needs an ``if __name__ == "__main__":`` guard in the calling script when > 1).
+    out_base : path
+        Output base directory; results go to ``<out_base>/<sim_id>/<rad>/``.
+    sim_id : str
+        Name of the run, the second directory level.
+    save : bool
+        Write files. ``False`` only returns the filtered scans.
+    write_netcdf : bool
+        Write ``<rad>_<start>_<end>.pp.nc`` (only when ``save``).
+    write_fitacf : bool
+        Write ``<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2`` (only when ``save``).
+    input_paths : sequence of path, optional
+        What to record as ``[input] paths`` in ``params.toml`` (e.g. the directories ``files`` came from).
+    geometry : ``"legacy"`` or ``"pydarn"``
+        Field-of-view implementation stored in the NetCDF file, see :func:`amgeo_sd.geo.radar_fov`.
+    altitude : float
+        Cell height [km] of the geolocation.
+    edge_gates : ``"legacy"`` or ``"missing"``
+        How out-of-range gates count as neighbours, see :class:`amgeo_sd.filters.MedianFilter`.
+    argv : sequence of str, optional
+        Command line recorded in ``script.cmd`` / ``params.toml``; ``sys.argv`` when ``None``.
 
     Returns
     -------
-    dict with ``scan_info``, ``n_scans``, ``n_echoes``, ``out_dir`` and, if ``save``, ``nc_file``
-    (``write_netcdf``) and ``fitacf_file`` (``write_fitacf``: ``*.fitacf.pp.bz2``), plus ``scans``
-    (the filtered :class:`~amgeo_sd.models.Scan` list).
+    dict
+        ``scan_info``, ``n_scans``, ``n_echoes``, ``scans`` (the filtered :class:`~amgeo_sd.models.Scan` list) and,
+        when ``save``, ``out_dir`` plus ``nc_file`` and ``fitacf_file`` (the files written).
+
+    Raises
+    ------
+    RuntimeError
+        When there is no data at ``start``, fewer than three scans, or (with ``save``) nothing survives the filter.
+
+    Examples
+    --------
+    >>> out = run_median_filter("bks", datetime(2025, 2, 8, 3), datetime(2025, 2, 8, 4), files=files, kde=False)
+    >>> out["nc_file"]
+    'data/outputs/L100/bks/bks_202502080300_202502080400.pp.nc'
     """
     logger.info(f"median filter: {rad} {start} -> {end}")
     probe = FitacfReader(rad, start, start + dt.timedelta(minutes=5), ftype, files, root).beams()
@@ -166,7 +227,21 @@ def run_median_filter(
 
 
 def run_from_settings(settings: Settings, argv: Sequence[str] | None = None) -> dict:
-    """:func:`run_median_filter` with the parameters of a :class:`~amgeo_sd.config.Settings`."""
+    """:func:`run_median_filter` with the parameters of a :class:`~amgeo_sd.config.Settings`.
+
+    Parameters
+    ----------
+    settings : Settings
+        Parameters from :func:`amgeo_sd.config.load_settings`; uses the `[run]`, `[input]`, `[median]`, `[geometry]` and
+        `[output]` tables. Directories in `[input] paths` are expanded to files.
+    argv : sequence of str, optional
+        Command line recorded in the output; ``sys.argv`` when ``None``.
+
+    Returns
+    -------
+    dict
+        As :func:`run_median_filter` (with ``save=True``).
+    """
     from amgeo_sd.cli import expand_fitacf_paths
 
     r, i, m, o = settings.run, settings.input, settings.median, settings.output

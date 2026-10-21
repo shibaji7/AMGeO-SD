@@ -35,7 +35,7 @@ COORDS ?=
 FIGDIR ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help env env-update env-remove install data-unpack data-info data-clean median median-demo dbscan dbscan-demo out-clean plot-rti plot-fov plot-demo analyse-day config-show docs lint format test test-unit test-real test-cov clean
+.PHONY: help env env-update env-remove install build data-unpack data-info data-clean median median-demo dbscan dbscan-demo out-clean plot-rti plot-fov plot-demo analyse-day config-show docs lint format test test-unit test-real test-cov clean
 
 ##@ Help
 help: ## Show this help
@@ -56,6 +56,9 @@ env-remove: ## Delete the conda env
 
 install: ## (Re)install amgeo_sd in editable mode into the env
 	$(PY) -m pip install -e . --no-deps
+
+build: ## Build the wheel and sdist into dist/ (what `pip install .` uses); check with `pip install dist/*.whl` in an empty venv
+	$(PY) -m pip install -q build && $(PY) -m build
 
 ##@ Data
 data-unpack: ## Unzip tests/data/archives/*.zip into tests/data/<name>/ (git-ignored)
@@ -89,8 +92,9 @@ median-demo: ## Run `median` from configs/median_{bks,gbr}_demo.toml (1 h each, 
 	$(MAKE) --no-print-directory median CONFIG=configs/median_bks_demo.toml
 	$(MAKE) --no-print-directory median CONFIG=configs/median_gbr_demo.toml
 
-docs: ## Regenerate docs/PARAMETERS.md from the settings classes (tests fail when it is stale)
+docs: ## Regenerate docs/PARAMETERS.md (settings) and docs/API.md + docs/api/ (Python API); tests fail when stale
 	$(PY) -m amgeo_sd params > docs/PARAMETERS.md
+	$(PY) -m amgeo_sd api --out docs
 
 config-show: ## Print the resolved median parameters (CONFIG=... plus overrides) without running
 	$(PY) -m amgeo_sd median --print-config $(if $(CONFIG),-c $(CONFIG)) $(if $(RAD),-r $(RAD)) $(if $(START),-s $(START)) $(if $(END),-e $(END)) $(EXTRA)
