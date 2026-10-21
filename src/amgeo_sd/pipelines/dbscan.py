@@ -33,6 +33,7 @@ def run_dbscan_model(
     sim_id: str = "L101",
     write_netcdf: bool = True,
     write_fitacf: bool = True,
+    extra_fields: bool = False,
     input_paths: Sequence[str | os.PathLike] | None = None,
     argv: Sequence[str] | None = None,
 ) -> dict:
@@ -71,6 +72,10 @@ def run_dbscan_model(
         Write ``<rad>_<start>_<end>.pp.nc``.
     write_fitacf : bool
         Write ``<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2``.
+    extra_fields : bool
+        Store the non-standard fields (``cluster_tag``, ``gflg_ribiero``, ``amgeo.model``, ``amgeo.version``) in that
+        file. Off by default, which leaves the raw records unchanged so that ``pydarnio.read_fitacf`` and other fitacf
+        readers can open it; the ``.pp.nc`` always has them.
     input_paths : sequence of path, optional
         What to record as ``[input] paths`` in ``params.toml``.
     argv : sequence of str, optional
@@ -148,7 +153,9 @@ def run_dbscan_model(
         )
         logger.info(f"wrote {out['nc_file']}")
     if write_fitacf:
-        records = scans_to_records(scans, reader.records(), command, model="dbscan", keep_empty=True)
+        records = scans_to_records(
+            scans, reader.records(), command, model="dbscan", keep_empty=True, extra_fields=extra_fields
+        )
         out["fitacf_file"] = str(write_fitacfpp(out_dir / fitacfpp_name(rad, start), records))
         logger.info(f"wrote {out['fitacf_file']} ({len(records)} records)")
 
@@ -161,7 +168,7 @@ def run_dbscan_model(
         ),
         dbscan=p,
         geometry=Geometry(geometry, altitude),
-        output=Output(write_netcdf, write_fitacf),
+        output=Output(write_netcdf, write_fitacf, extra_fields),
     )
     provenance = {
         "command": command,
@@ -226,6 +233,7 @@ def run_dbscan_from_settings(settings: Settings, argv: Sequence[str] | None = No
         sim_id=r.sim_id,
         write_netcdf=o.netcdf,
         write_fitacf=o.fitacf,
+        extra_fields=o.extra_fields,
         input_paths=i.paths,
         argv=argv,
     )

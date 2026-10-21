@@ -76,7 +76,7 @@ def cmd_median(args: argparse.Namespace) -> int:
             edge_gates=args.edge_gates,
         ),
         "geometry": dict(backend=args.geometry, altitude=args.altitude),
-        "output": dict(netcdf=args.netcdf, fitacf=args.fitacf),
+        "output": dict(netcdf=args.netcdf, fitacf=args.fitacf, extra_fields=args.extra_fields),
     }
     settings = load_settings(args.config, overrides)
     if args.print_config:
@@ -115,7 +115,7 @@ def cmd_dbscan(args: argparse.Namespace) -> int:
             n_data_th=args.n_data_th,
         ),
         "geometry": dict(backend=args.geometry, altitude=args.altitude),
-        "output": dict(netcdf=args.netcdf, fitacf=args.fitacf),
+        "output": dict(netcdf=args.netcdf, fitacf=args.fitacf, extra_fields=args.extra_fields),
     }
     settings = load_settings(args.config, overrides, require="dbscan")
     if args.print_config:
@@ -254,6 +254,13 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--netcdf", action=flag, default=None, help="write the .pp.nc file (default on)")
     m.add_argument("--fitacf", action=flag, default=None, help="write the .fitacf.pp.bz2 file (default on)")
     m.add_argument(
+        "--extra-fields",
+        action=flag,
+        default=None,
+        help="store non-standard fields (v_mad, gflg_kde, ...) in the .fitacf.pp.bz2; "
+        "off (default) keeps it readable by pydarnio.read_fitacf",
+    )
+    m.add_argument(
         "--geometry",
         choices=["legacy", "pydarn"],
         help="range-cell geolocation: original CalcFov or pydarn 4 (default legacy)",
@@ -300,6 +307,13 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help="write the .fitacf.pp.bz2 file (default on)",
+    )
+    d.add_argument(
+        "--extra-fields",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="store non-standard fields (cluster_tag, gflg_ribiero) in the .fitacf.pp.bz2; "
+        "off (default) keeps it readable by pydarnio.read_fitacf",
     )
     d.add_argument("-o", "--out", help="output base dir (default data/outputs)")
     d.add_argument("-sid", "--sim-id", help="run id; output goes to <out>/<sim-id>/<rad>/ (default L100)")

@@ -64,6 +64,7 @@ PARAM_META: dict[tuple[str, str], tuple[str, str, str]] = {
     ("geometry", "altitude"): ("km, in (0, 2000)", "`--altitude`", "-"),
     ("output", "netcdf"): ("`true` / `false`; at least one output must be on", "`--netcdf`, `--no-netcdf`", "-"),
     ("output", "fitacf"): ("`true` / `false`; at least one output must be on", "`--fitacf`, `--no-fitacf`", "-"),
+    ("output", "extra_fields"): ("`true` / `false` (default `false`)", "`--extra-fields`, `--no-extra-fields`", "-"),
     ("plot", "inputs"): (
         "files or directories of one kind (all `.nc` or all fitacf-type files)",
         "`-i`, `--input`",
@@ -147,7 +148,7 @@ OUTPUT_FILES = [
     (
         "`<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2`",
         "`median`, `dbscan`",
-        "fitacf++ as bz2 DMAP (`[output] fitacf`); time = `start`. Files named `.fitacf.pl.bz2` by earlier versions are still read",
+        "fitacf++ as bz2 DMAP (`[output] fitacf`); time = `start`; standard fitacf fields only unless `[output] extra_fields = true` (see [the extra fields](USAGE.md#the-extra-fields))",
     ),
     (
         "`params.toml`",

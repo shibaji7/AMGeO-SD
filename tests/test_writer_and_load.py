@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from amgeo_sd.io import (
+    EXTRA_RECORD_FIELDS,
     FitacfReader,
     beams_to_scans,
     fitacfpp_name,
@@ -17,7 +18,8 @@ from amgeo_sd.io import (
     scans_to_records,
     write_fitacfpp,
 )
-from amgeo_sd.pipelines import run_median_filter
+from amgeo_sd.io.fitacf import EXTRA_ARRAYS
+from amgeo_sd.pipelines import run_dbscan_model, run_median_filter
 
 DATA = Path(__file__).parent / "data"
 T0 = dt.datetime(2025, 2, 8, 2, 10)
@@ -96,7 +98,7 @@ def test_scan_flag_is_reset_when_the_first_beam_has_no_echo(tmp_path):
                 "gflg_kde": np.full(b.n_echoes, np.nan),
                 "clabel": np.zeros(b.n_echoes),
             }
-    path = write_fitacfpp(tmp_path / fitacfpp_name("tst", T0), scans_to_records(scans, recs, "cmd"))
+    path = write_fitacfpp(tmp_path / fitacfpp_name("tst", T0), scans_to_records(scans, recs, "cmd", extra_fields=True))
     back = beams_to_scans(records_to_beams(read_fitacf_file(path)))
     assert [len(s.beams) for s in back] == [3, 3, 3]
     assert (
@@ -113,7 +115,7 @@ def test_writer_replaces_instead_of_appending(tmp_path):
     for b in beams:
         b.extra = {"v_mad": np.zeros(2)}
     scan = Scan(beams=beams).update()
-    out = scans_to_records([scan], recs)
+    out = scans_to_records([scan], recs, extra_fields=True)
     path = tmp_path / "x.fitacf.pp.bz2"
     for _ in range(2):
         write_fitacfpp(path, out)
@@ -121,22 +123,51 @@ def test_writer_replaces_instead_of_appending(tmp_path):
     assert not list(tmp_path.glob("*.part"))
 
 
-def test_old_pl_suffix_is_still_read_and_new_names_are_used(tmp_path):
-    import shutil
+ALL_EXTRAS = ("v_mad", "gflg_conv", "gflg_kde", "clabel", "cluster_tag", "gflg_ribiero")
 
+
+def scan_with_extras(recs):
+    from amgeo_sd.models import Scan
+
+    beams = records_to_beams(recs)
+    for b in beams:
+        b.extra = {k: np.full(b.n_echoes, 2.0) for k in ALL_EXTRAS}
+    return Scan(beams=beams).update()
+
+
+def test_file_name_and_kind_are_recognised(tmp_path):
     name = fitacfpp_name("tst", T0)
     assert name == "20250208.0210.00.tst.fitacf.pp.bz2"
     recs = [synthetic_record(T0 + dt.timedelta(seconds=3 * i), i) for i in range(3)]
-    beams = records_to_beams(recs)
-    from amgeo_sd.models import Scan
+    path = write_fitacfpp(tmp_path / name, scans_to_records([scan_with_extras(recs)], recs, extra_fields=True))
+    _, meta = load_scans([path])
+    assert meta["kind"] == "fitacf++" and meta["rad"] == "tst" and len(read_fitacf_file(path)) == 3
 
-    for b in beams:
-        b.extra = {"v_mad": np.zeros(2)}
-    new = write_fitacfpp(tmp_path / name, scans_to_records([Scan(beams=beams).update()], recs))
-    old = tmp_path / "20250208.0210.00.tst.fitacf.pl.bz2"
-    shutil.copy(new, old)
-    _, meta = load_scans([old])
-    assert meta["kind"] == "fitacf++" and len(read_fitacf_file(old)) == 3
+
+def test_extra_fields_are_off_by_default_and_v_e_carries_v_mad(tmp_path):
+    recs = [synthetic_record(T0 + dt.timedelta(seconds=3 * i), i) for i in range(3)]
+    out = scans_to_records([scan_with_extras(recs)], recs)
+    assert not {k for r in out for k in r} & set(EXTRA_RECORD_FIELDS)
+    assert all((r["v_e"] == 2.0).all() for r in out)  # v_mad is still available, as the standard v_e
+    path = write_fitacfpp(tmp_path / "x.fitacf.pp.bz2", out)
+    assert not {k for r in read_fitacf_file(path) for k in r} & set(EXTRA_RECORD_FIELDS)
+
+
+def test_extra_fields_on_adds_exactly_the_documented_ones():
+    recs = [synthetic_record(T0 + dt.timedelta(seconds=3 * i), i) for i in range(3)]
+    out = scans_to_records([scan_with_extras(recs)], recs, model="dbscan", extra_fields=True)
+    assert {k for r in out for k in r} & set(EXTRA_RECORD_FIELDS) == set(EXTRA_RECORD_FIELDS)
+    assert out[0]["amgeo.model"] == "dbscan"
+    assert set(EXTRA_RECORD_FIELDS) - {"amgeo.model", "amgeo.version"} == set(ALL_EXTRAS) == set(EXTRA_ARRAYS)
+
+
+def test_extra_fields_already_in_the_source_are_dropped_when_off():
+    recs = [synthetic_record(T0 + dt.timedelta(seconds=3 * i), i) for i in range(3)]
+    for r in recs:  # as if the input were itself a fitacf++ file
+        r["v_mad"], r["amgeo.model"] = np.zeros(2, np.float32), "median"
+    scan = scan_with_extras(recs)
+    assert not {k for r in scans_to_records([scan], recs) for k in r} & set(EXTRA_RECORD_FIELDS)
+    assert {"v_mad", "amgeo.model"} <= {k for r in scans_to_records([scan], recs, extra_fields=True) for k in r}
 
 
 def test_scans_to_records_needs_the_source_record():
@@ -165,7 +196,15 @@ def bks_run(tmp_path_factory, fitacf_files):
     out = tmp_path_factory.mktemp("bks")
     start, end = dt.datetime(2025, 2, 8, 2, 10), dt.datetime(2025, 2, 8, 2, 40)
     res = run_median_filter(
-        "bks", start, end, files=sorted(folder.glob("*.bz2")), out_base=out, sim_id="W", kde=False, argv=["t"]
+        "bks",
+        start,
+        end,
+        files=sorted(folder.glob("*.bz2")),
+        out_base=out,
+        sim_id="W",
+        kde=False,
+        argv=["t"],
+        extra_fields=True,  # the DMAP tests below compare v_mad / clabel with the NetCDF file
     )
     return start, end, res
 
@@ -218,6 +257,7 @@ def test_rerunning_a_pipeline_does_not_duplicate_records(bks_run):
         sim_id="W",
         kde=False,
         argv=["t"],
+        extra_fields=True,
     )
     assert len(read_fitacf_file(again["fitacf_file"])) == n
 
@@ -227,3 +267,48 @@ def test_raw_fitacf_frame_reports_version(fitacf_files):
     df, meta = load_frame([DATA / "gbr_20250208"], dt.datetime(2025, 2, 8, 3), dt.datetime(2025, 2, 8, 3, 10))
     assert meta["kind"] == "fitacf" and meta["fit_version"] == "2.5" and meta["rad"] == "gbr" and meta["extra"] == []
     assert df["time"].min() >= np.datetime64("2025-02-08T03:00") and len(df) > 100
+
+
+@pytest.mark.realdata
+@pytest.mark.parametrize("model", ["median", "dbscan"])
+def test_default_dmap_is_standard_fitacf_that_pydarnio_reads(model, tmp_path, fitacf_files):
+    """No extra fields by default: the file passes the strict fitacf reader, unlike a file with the extras."""
+    import bz2
+
+    import pydarnio
+
+    folder = DATA / "bks_20250208"
+    if not folder.is_dir():
+        pytest.skip("bks_20250208 not unpacked")
+    start, end = dt.datetime(2025, 2, 8, 2, 10), dt.datetime(2025, 2, 8, 2, 25)
+    run = run_median_filter if model == "median" else run_dbscan_model
+    kwargs = {"kde": False} if model == "median" else {}
+    plain = run(
+        "bks", start, end, files=sorted(folder.glob("*.bz2")), out_base=tmp_path, sim_id="s", argv=["t"], **kwargs
+    )
+    extra = run(
+        "bks",
+        start,
+        end,
+        files=sorted(folder.glob("*.bz2")),
+        out_base=tmp_path,
+        sim_id="x",
+        argv=["t"],
+        extra_fields=True,
+        **kwargs,
+    )
+
+    records = pydarnio.read_fitacf(bz2.open(plain["fitacf_file"], "rb").read(), mode="strict")
+    assert len(records) == len(read_fitacf_file(plain["fitacf_file"])) > 0
+    assert not {k for r in records for k in r} & set(EXTRA_RECORD_FIELDS)
+
+    with pytest.raises(Exception, match="Unsupported fields"):
+        pydarnio.read_fitacf(bz2.open(extra["fitacf_file"], "rb").read(), mode="strict")
+    assert {"amgeo.model", "amgeo.version"} <= set(read_fitacf_file(extra["fitacf_file"])[0])
+
+    # the same echoes either way; the NetCDF file has the extras in both cases
+    df_plain, meta = load_frame([plain["fitacf_file"]])
+    df_extra, _ = load_frame([extra["fitacf_file"]])
+    assert meta["extra"] == [] and len(df_plain) == len(df_extra)
+    in_nc = {"v_mad", "gflg_kde"} if model == "median" else {"cluster_tag", "gflg_ribiero"}
+    assert in_nc <= set(load_frame([plain["nc_file"]])[0])

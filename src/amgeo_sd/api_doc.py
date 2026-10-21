@@ -54,7 +54,7 @@ FIELDS_IN_REFERENCE = ("Run", "Input", "Median", "Dbscan", "Geometry", "Output",
 #: Descriptions of the non-callable public names, keyed ``module.name``.
 CONSTANT_DOCS = {
     "amgeo_sd.io.FITACFPP_SUFFIX": "File-name ending of fitacf++ DMAP files (`.fitacf.pp.bz2`).",
-    "amgeo_sd.io.LEGACY_FITACFPP_SUFFIXES": "Endings an earlier version wrote; such files are still read and are skipped when searching an archive.",
+    "amgeo_sd.io.EXTRA_RECORD_FIELDS": "The non-standard DMAP fields written when `extra_fields` is on; every other field is a standard fitacf field.",
     "amgeo_sd.filters.DEFAULT_WEIGHTS": "3 x 3 x 3 weights over (scan, beam, gate); the centre cell has weight 5.",
     "amgeo_sd.filters.EDGE_GATES": "Allowed values of `edge_gates`: how gates outside the radar's range count as neighbours.",
     "amgeo_sd.geo.BACKENDS": "Allowed values of the geometry `backend`.",
@@ -307,7 +307,7 @@ def _index() -> dict[str, str]:
         mod = importlib.import_module(page.module)
         for name in public_names(page.module, page.names):
             obj = getattr(mod, name)
-            found[name] = f"{page.slug}.md#{_anchor(name)}"
+            found[name] = f"{page.slug}.md#{_anchor(name) if _is_callable_doc(obj) else 'constants'}"
             if inspect.isclass(obj) and name not in FIELDS_IN_REFERENCE:
                 for method, _ in _methods(obj):
                     found[f"{name}.{method}"] = f"{page.slug}.md#{_anchor(f'{name}.{method}')}"

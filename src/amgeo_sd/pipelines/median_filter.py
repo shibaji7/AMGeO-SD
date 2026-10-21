@@ -39,6 +39,7 @@ def run_median_filter(
     save: bool = True,
     write_netcdf: bool = True,
     write_fitacf: bool = True,
+    extra_fields: bool = False,
     input_paths: Sequence[str | os.PathLike] | None = None,
     geometry: str = "legacy",
     altitude: float = 300.0,
@@ -91,6 +92,9 @@ def run_median_filter(
         Write ``<rad>_<start>_<end>.pp.nc`` (only when ``save``).
     write_fitacf : bool
         Write ``<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2`` (only when ``save``).
+    extra_fields : bool
+        Store the non-standard fields (``v_mad``, ``gflg_conv``, ``gflg_kde``, ``clabel``, ``amgeo.model``, ...) in that file.
+        Off by default so that ``pydarnio.read_fitacf`` and other fitacf readers can open it; the ``.pp.nc`` always has them.
     input_paths : sequence of path, optional
         What to record as ``[input] paths`` in ``params.toml`` (e.g. the directories ``files`` came from).
     geometry : ``"legacy"`` or ``"pydarn"``
@@ -191,7 +195,7 @@ def run_median_filter(
             out["nc_file"] = str(export.write_netcdf(ds, out_dir / name))
             logger.info(f"wrote {out['nc_file']}")
         if write_fitacf:
-            records = scans_to_records(filtered, reader.records(), command)
+            records = scans_to_records(filtered, reader.records(), command, extra_fields=extra_fields)
             out["fitacf_file"] = str(write_fitacfpp(out_dir / fitacfpp_name(rad, start), records))
             logger.info(f"wrote {out['fitacf_file']} ({len(records)} records)")
         settings = Settings(
@@ -203,7 +207,7 @@ def run_median_filter(
             ),
             median=Median(thresh, pth, lth, uth, kde, cluster, eps, min_samples, edge_gates),
             geometry=Geometry(geometry, altitude),
-            output=Output(write_netcdf, write_fitacf),
+            output=Output(write_netcdf, write_fitacf, extra_fields),
         )
         provenance = {
             "command": command,
@@ -269,6 +273,7 @@ def run_from_settings(settings: Settings, argv: Sequence[str] | None = None) -> 
         altitude=settings.geometry.altitude,
         write_netcdf=o.netcdf,
         write_fitacf=o.fitacf,
+        extra_fields=o.extra_fields,
         input_paths=i.paths,
         argv=argv,
     )

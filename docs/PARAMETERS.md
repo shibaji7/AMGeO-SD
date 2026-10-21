@@ -89,7 +89,8 @@ Which products to write. Used by `median`, `dbscan`.
 | Key | Type | Default | Allowed | Description | Command line | `make` |
 |---|---|---|---|---|---|---|
 | `netcdf` | bool | `true` | `true` / `false`; at least one output must be on | &lt;rad&gt;_&lt;start&gt;_&lt;end&gt;.pp.nc | `--netcdf`, `--no-netcdf` | - |
-| `fitacf` | bool | `true` | `true` / `false`; at least one output must be on | &lt;YYYYMMDD.HHMM.SS&gt;.&lt;rad&gt;.fitacf.pp.bz2 (DMAP with extra fields) | `--fitacf`, `--no-fitacf` | - |
+| `fitacf` | bool | `true` | `true` / `false`; at least one output must be on | &lt;YYYYMMDD.HHMM.SS&gt;.&lt;rad&gt;.fitacf.pp.bz2 (bz2 DMAP, fitacf-compatible) | `--fitacf`, `--no-fitacf` | - |
+| `extra_fields` | bool | `false` | `true` / `false` (default `false`) | also store non-standard fields (v_mad, gflg_conv, gflg_kde, clabel, cluster_tag, gflg_ribiero, amgeo.*) in the .fitacf.pp.bz2; false keeps it readable by pydarnio.read_fitacf and other fitacf tools (the .pp.nc always has them) | `--extra-fields`, `--no-extra-fields` | - |
 
 ## `[plot]`
 
@@ -152,7 +153,7 @@ Variables are given on the command line (`make median RAD=bks ...`); an empty va
 | File | Written by | Content |
 |---|---|---|
 | `<rad>_<start>_<end>.pp.nc` | `median`, `dbscan` | fitacf++ NetCDF4 (`[output] netcdf`); `<start>`/`<end>` as `YYYYMMDDHHMM` |
-| `<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2` | `median`, `dbscan` | fitacf++ as bz2 DMAP (`[output] fitacf`); time = `start`. Files named `.fitacf.pl.bz2` by earlier versions are still read |
+| `<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2` | `median`, `dbscan` | fitacf++ as bz2 DMAP (`[output] fitacf`); time = `start`; standard fitacf fields only unless `[output] extra_fields = true` (see [the extra fields](USAGE.md#the-extra-fields)) |
 | `params.toml` | `median`, `dbscan` | all parameters, annotated, plus `[provenance]` and `[result]`; valid as `--config` |
 | `script.cmd` | `median`, `dbscan` | the command line |
 | `<name>.png` / `.pdf` / `.svg` | `plot` | default name `rti_<rad>_b<beam>_<date>_<time>_<params>` or `fov_<rad>_<date>_<time>_<params>_<coords>` |

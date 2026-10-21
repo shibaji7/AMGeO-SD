@@ -186,8 +186,13 @@ def test_fan_of_raw_and_fitacfpp_on_real_data(run, tmp_path):
     raw, _ = load_frame([folder], START, START + dt.timedelta(minutes=10))
     pp, _ = load_frame([res["fitacf_file"]], START, END)
     when = dt.datetime(2025, 2, 8, 3, 5)
-    for name, df in (("raw", raw), ("pp", pp)):
-        fan = plot_fan(df, rad, when, ("v", "gflg_conv" if name == "pp" else "gflg"), tmp_path / f"{name}.png")
+    nc, _ = load_frame([res["nc_file"]], START, END)
+    for name, df, flag in (
+        ("raw", raw, "gflg"),
+        ("pp", pp, "gflg"),
+        ("nc", nc, "gflg_conv"),
+    ):  # the DMAP has no gflg_conv
+        fan = plot_fan(df, rad, when, ("v", flag), tmp_path / f"{name}.png")
         n = sum(
             len(c.get_paths())
             for ax in fan.fig.axes
@@ -213,7 +218,7 @@ def test_plot_cli_and_toml_config(run, tmp_path, capsys):
                 "plot",
                 "fov",
                 "-i",
-                res["fitacf_file"],
+                res["nc_file"],
                 "-t",
                 "2025-02-08T03:10",
                 "-p",

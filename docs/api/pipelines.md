@@ -51,6 +51,7 @@ run_dbscan_model(
     sim_id: str = 'L101',
     write_netcdf: bool = True,
     write_fitacf: bool = True,
+    extra_fields: bool = False,
     input_paths: Sequence[str | os.PathLike] | None = None,
     argv: Sequence[str] | None = None,
 ) -> dict
@@ -79,6 +80,7 @@ The echoes themselves are the raw fitacf echoes; the ``.fitacf.pp.bz2`` keeps ev
 | `sim_id` | str | `'L101'` | Name of the run, the second directory level. |
 | `write_netcdf` | bool | `True` | Write ``<rad>_<start>_<end>.pp.nc``. |
 | `write_fitacf` | bool | `True` | Write ``<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2``. |
+| `extra_fields` | bool | `False` | Store the non-standard fields (``cluster_tag``, ``gflg_ribiero``, ``amgeo.model``, ``amgeo.version``) in that file. Off by default, which leaves the raw records unchanged so that ``pydarnio.read_fitacf`` and other fitacf readers can open it; the ``.pp.nc`` always has them. |
 | `input_paths` | sequence of path, optional | `None` | What to record as ``[input] paths`` in ``params.toml``. |
 | `argv` | sequence of str, optional | `None` | Command line recorded in the output; ``sys.argv`` when ``None``. |
 
@@ -134,6 +136,7 @@ run_median_filter(
     save: bool = True,
     write_netcdf: bool = True,
     write_fitacf: bool = True,
+    extra_fields: bool = False,
     input_paths: Sequence[str | os.PathLike] | None = None,
     geometry: str = 'legacy',
     altitude: float = 300.0,
@@ -171,6 +174,7 @@ the meaning and allowed values given in the [parameter reference](../PARAMETERS.
 | `save` | bool | `True` | Write files. ``False`` only returns the filtered scans. |
 | `write_netcdf` | bool | `True` | Write ``<rad>_<start>_<end>.pp.nc`` (only when ``save``). |
 | `write_fitacf` | bool | `True` | Write ``<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2`` (only when ``save``). |
+| `extra_fields` | bool | `False` | Store the non-standard fields (``v_mad``, ``gflg_conv``, ``gflg_kde``, ``clabel``, ``amgeo.model``, ...) in that file. Off by default so that ``pydarnio.read_fitacf`` and other fitacf readers can open it; the ``.pp.nc`` always has them. |
 | `input_paths` | sequence of path, optional | `None` | What to record as ``[input] paths`` in ``params.toml`` (e.g. the directories ``files`` came from). |
 | `geometry` | ``"legacy"`` or ``"pydarn"`` | `'legacy'` | Field-of-view implementation stored in the NetCDF file, see [`radar_fov`](geo.md#radar_fov). |
 | `altitude` | float | `300.0` | Cell height [km] of the geolocation. |

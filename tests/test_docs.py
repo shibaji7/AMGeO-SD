@@ -115,11 +115,18 @@ def test_docs_use_the_current_file_names():
     for path in MARKDOWN + [ROOT / "Makefile", ROOT / "configs" / "default.toml"]:
         text = path.read_text()
         assert ".fitacf++.nc" not in text, f"{path.name} still uses the old NetCDF name"
-        for m in re.finditer(r"fitacf\.pl\.bz2", text):
-            line = text[: m.start()].count("\n")
-            context = " ".join(text.splitlines()[max(0, line - 1) : line + 2])
-            assert "earlier" in context or "legacy" in context, (
-                f"{path.name}:{line + 1} mentions the old .pl name without saying so"
-            )
+        assert "fitacf.pl.bz2" not in text, f"{path.name} mentions the old .pl file name"
     usage = (ROOT / "docs" / "USAGE.md").read_text()
     assert ".pp.nc" in usage and ".fitacf.pp.bz2" in usage
+
+
+def test_extra_fields_are_documented():
+    from amgeo_sd.io import EXTRA_RECORD_FIELDS
+
+    usage = (ROOT / "docs" / "USAGE.md").read_text()
+    section = usage.split("### The extra fields")[1].split("\n### ")[0]
+    for field in EXTRA_RECORD_FIELDS:
+        assert f"| `{field}` |" in section, f"{field} is not in the extra-fields table of docs/USAGE.md"
+    for text in ("README.md", "docs/PARAMETERS.md", "configs/default.toml"):
+        assert "extra_fields" in (ROOT / text).read_text() or "extra-fields" in (ROOT / text).read_text(), text
+    assert "#the-extra-fields" in (ROOT / "README.md").read_text()

@@ -123,10 +123,39 @@ Speed: about 0.15 ms per echo with KDE; an hour of bks takes ~10 s.
 `ltab`, ...) with `slist v w_l p_l gflg` replaced by the filtered values, `v_e` set to `v_mad` (the weighted median absolute deviation of the
 neighbouring velocities, in m/s: a robust local spread, not a fit error; on bks it has a median of 3.8 m/s against 4.0 m/s for the original fit errors)
 and `qflg` = 1 for every kept cell. Other per-echo fitacf arrays (`p_s`, `p_l_e`, `elv`, ...)
-keep their value where the gate had an echo and are NaN / 0 where the filter added a cell (about 4% of cells). Added arrays: `v_mad`, `gflg_conv`, `gflg_kde`
-(-1 = not computed), `clabel`; strings `amgeo.model`, `amgeo.version`; `origin.command` / `origin.time` record the processing.
-The scan flag is re-set on the first kept beam of every scan. Because of the extra fields, `pydarnio.read_fitacf` rejects these files;
-read them with `amgeo_sd.io.read_fitacf_file` (falls back to generic DMAP) or `pydarnio.read_dmap`. The raw-data archive lookup (`root`) skips `*.fitacf.pp.bz2`, so filtered and raw data are never mixed; the loaders accept them when given explicitly or by directory.
+keep their value where the gate had an echo and are NaN / 0 where the filter added a cell (about 4% of cells). `origin.command` / `origin.time`
+record the processing. The scan flag is re-set on the first kept beam of every scan. By default these are **standard fitacf fields only**, so the file is read by
+`pydarnio.read_fitacf`, pydarn and other fitacf tools; the labels the models compute are then only in the `.pp.nc`. To store them in the DMAP file too, set
+`[output] extra_fields = true`, see the next section. The raw-data archive lookup (`root`) skips `*.fitacf.pp.bz2`, so filtered and raw data are never mixed; the loaders accept them when given explicitly or by directory.
+
+### The extra fields
+
+The models compute labels that the fitacf format has no field for. They are always in the `.pp.nc`. They are written into the
+`.fitacf.pp.bz2` only with `[output] extra_fields = true` (`--extra-fields`; default `false`):
+
+| Extra field | Type | Model | Meaning | Without it in the DMAP file |
+|---|---|---|---|---|
+| `v_mad` | float32 | median | weighted median absolute deviation of the neighbouring velocities [m/s] | nothing lost: it is also stored as the standard `v_e` |
+| `gflg_conv` | int8 | median | ground-scatter flag from the weighted fraction of ground-scatter neighbours: 0 ionospheric, 1 ground, 2 undetermined, -1 not computed | the file has only the fitacf `gflg`, which for the median model is the legacy v-w rule (labels about 96% of bks echoes as ground scatter, not recommended) |
+| `gflg_kde` | int8 | median | the same from a Beta-distribution fit (the most robust of the median flags): 0, 1, 2, -1 = not computed (`kde = false`) | as above |
+| `clabel` | int16 | median | DBSCAN label of the echo inside its own scan (-1 noise); not continuous in time | no scan-wise cluster label |
+| `cluster_tag` | int16 | DBSCAN | cluster number of the echo within its beam, over all scans (-1 noise); unique per beam only | the file equals the raw records, the clusters are only in the `.pp.nc` |
+| `gflg_ribiero` | int8 | DBSCAN | Ribiero cluster rule: -1 unclassified, 0 ionospheric, 1 ground | as above, so the DBSCAN `.fitacf.pp.bz2` adds nothing to the raw file |
+| `amgeo.model` | string | both | `median` or `dbscan` | the model name is still inside `origin.command` |
+| `amgeo.version` | string | both | version of this package | not recorded in the DMAP file (it is in the `.pp.nc` and `params.toml`) |
+
+What it means for the file:
+
+* **`false` (default): a fitacf file.** Every field is a standard fitacf field, stored with its fitacf data type; `pydarnio.read_fitacf`, pydarn and
+  tools built on them open it like any other fitacf file. Use this when someone else's code reads the result. The price: the flags above are not in
+  the file. A tool that looks at `gflg` sees the legacy rule for the median model (the fit's own flag for the DBSCAN model), not `gflg_kde` / `gflg_conv` /
+  `gflg_ribiero`. Take the classification from the `.pp.nc`, or use `extra_fields = true`.
+* **`true`: a generic DMAP file.** The labels travel with the records, but `pydarnio.read_fitacf` rejects the file ("Unsupported fields"), and so may any tool that only
+  accepts standard fitacf. Read it with `amgeo_sd.io.read_fitacf_file` / `load_frame` / `load_scans` (these fall back to generic DMAP) or `pydarnio.read_dmap`.
+  The generic writer chooses the data type of each field itself, so a few header values (e.g. `stid`) may be stored narrower than the fitacf specification; this is why a strict
+  fitacf reader would complain even apart from the extra names.
+* The `.pp.nc` is unaffected by the setting, and so are the echo values (`slist v w_l p_l gflg v_e qflg`).
+* `load_frame` of a file without the extras has no `v_mad`, `gflg_kde`, ... columns; plots of those parameters then need the `.pp.nc` (`make plot-fov` of the demo uses it).
 
 ### Differences from the legacy output
 
@@ -134,6 +163,7 @@ read them with `amgeo_sd.io.read_fitacf_file` (falls back to generic DMAP) or `p
 * the default `thresh` is 0.6 instead of 0.7 and `edge_gates` can treat out-of-range gates as missing (see above); the legacy behaviour is `thresh = 0.7`, `edge_gates = "legacy"`;
 * the KDE jitter uses a seeded generator per scan (reproducible, independent of `jobs`); a failed Beta fit gives 2 instead of an exception;
 * filtered beams with no surviving echo are dropped (as after the legacy DBSCAN regrouping); `v_e` is NaN in memory and in the `.nc`, `v_mad` in the `.fitacf.pp.bz2`;
+* the `.fitacf.pp.bz2` holds standard fitacf fields only by default (the legacy file carried extra arrays that fitacf readers reject), see [the extra fields](#the-extra-fields);
 * `clabel` is also written; `scan_stime` / `scan_etime` are coordinates of `scan_num` rather than separate dimensions; `frang`, `rsep` are stored;
 * the scan period is the median spacing of all scan-start beams (the legacy code differenced the last two starts among beams with echoes);
 * range-cell geometry uses the data's `frang` / `rsep` (legacy: always 180 / 45 km; identical for bks and gbr);
@@ -163,8 +193,8 @@ Reads the scans in `[start, end]` and **labels** the raw echoes; nothing is remo
    is -1 unclassified, 0 ionospheric, 1 ground.
 
 Outputs (`<out>/<sim_id>/<rad>/`): `<rad>_<start>_<end>.pp.nc` with `v w_l p_l gflg` unchanged plus `cluster_tag` and `gflg_ribiero`; a
-`.fitacf.pp.bz2` that keeps **every original record** (also beams without echoes, original scan flags and `qflg` / `v_e`) with the two extra arrays and
-`amgeo.model = "dbscan"`; an annotated `params.toml` (`[dbscan]` table, result counts) and `script.cmd`. Plot it with
+`.fitacf.pp.bz2` that keeps **every original record** (also beams without echoes, original scan flags and `qflg` / `v_e`); it adds the two arrays and
+`amgeo.model = "dbscan"` only with `[output] extra_fields = true` (see [the extra fields](#the-extra-fields)), otherwise it equals the raw records apart from `origin.command` / `origin.time`; an annotated `params.toml` (`[dbscan]` table, result counts) and `script.cmd`. Plot it with
 `make plot-rti INPUT=<nc> BEAM=12 PARAMS="v cluster_tag gflg_ribiero"`.
 
 Differences from the legacy code: the defaults are `eps = 2`, `min_samples = 8` (legacy 1 and 5). With the legacy values patchy but continuous structure
@@ -199,7 +229,7 @@ All plots read any supported input through `amgeo_sd.io.load_frame`: raw fitacf 
 make plot-rti INPUT=tests/data/bks_20250208 COMPARE=data/outputs/demo/bks/bks_202502080300_202502080400.pp.nc \
      BEAM=12 START=2025-02-08T03:00 END=2025-02-08T04:00 PARAMS=v          # raw above, fitacf++ below (+ gflg panels)
 make plot-rti INPUT=data/outputs/demo/bks/*.pp.nc BEAM=12 PARAMS="v w_l p_l gflg gflg_conv v_mad"
-make plot-fov INPUT=data/outputs/demo/bks/20250208.0300.00.bks.fitacf.pp.bz2 TIME=2025-02-08T03:30 PARAMS="v gflg_conv" COORDS=aacgmv2
+make plot-fov INPUT=data/outputs/demo/bks/bks_202502080300_202502080400.pp.nc TIME=2025-02-08T03:30 PARAMS="v gflg_conv" COORDS=aacgmv2
 make plot-demo                                                              # runs the demo filter, then all of the above
 ```
 

@@ -50,7 +50,11 @@ altitude = 300.0                  # km
 
 [output]
 netcdf = true                     # <rad>_<start>_<end>.pp.nc
-fitacf = true                     # <YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2 (DMAP with extra fields)
+fitacf = true                     # <YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2 (bz2 DMAP, fitacf-compatible)
+extra_fields = false              # true: also store v_mad, gflg_conv, gflg_kde, clabel, cluster_tag, gflg_ribiero,
+                                  # amgeo.model, amgeo.version in that file. Standard fitacf readers (pydarnio.read_fitacf,
+                                  # pydarn, ...) reject these fields, so keep false if other tools will read the file.
+                                  # The .pp.nc always has them.
 
 # ---------------------------------------------------------------------------------------------
 # Figures: `make plot-rti CONFIG=...` / `make plot-fov CONFIG=...` read this table.

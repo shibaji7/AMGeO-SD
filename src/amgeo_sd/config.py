@@ -107,6 +107,7 @@ class Output:
 
     netcdf: bool = True  # <rad>_<start>_<end>.pp.nc
     fitacf: bool = True  # <YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2
+    extra_fields: bool = False  # non-standard fields in the .fitacf.pp.bz2 (v_mad, gflg_kde, ...)
 
 
 @dataclass
@@ -343,7 +344,9 @@ FIELD_DOCS = {
     },
     "output": {
         "netcdf": "<rad>_<start>_<end>.pp.nc",
-        "fitacf": "<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2 (DMAP with extra fields)",
+        "fitacf": "<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2 (bz2 DMAP, fitacf-compatible)",
+        "extra_fields": "also store non-standard fields (v_mad, gflg_conv, gflg_kde, clabel, cluster_tag, gflg_ribiero, "
+        "amgeo.*) in the .fitacf.pp.bz2; false keeps it readable by pydarnio.read_fitacf and other fitacf tools (the .pp.nc always has them)",
     },
     "plot": {
         "inputs": "fitacf / fitacf++ files or directories (.nc, .fitacf.pp.bz2, .fitacf[.bz2|.gz])",

@@ -268,6 +268,7 @@ def run(request, tmp_path_factory, fitacf_files):
         sim_id="D",
         argv=["t"],
         input_paths=[str(folder)],
+        extra_fields=True,  # the DMAP tests below read cluster_tag / gflg_ribiero from it
     )
     reader = FitacfReader(rad, start, end, files=sorted(folder.glob("*.bz2")))
     return rad, beam, folder, start, end, res, reader, out
@@ -366,7 +367,9 @@ def test_dmap_output_keeps_every_original_record(run):
 @pytest.mark.realdata
 def test_rerun_is_deterministic_and_does_not_duplicate(run):
     rad, beam, folder, start, end, res, reader, out = run
-    again = run_dbscan_model(rad, start, end, files=sorted(folder.glob("*.bz2")), out_base=out, sim_id="D", argv=["t"])
+    again = run_dbscan_model(
+        rad, start, end, files=sorted(folder.glob("*.bz2")), out_base=out, sim_id="D", argv=["t"], extra_fields=True
+    )
     assert len(read_fitacf_file(again["fitacf_file"])) == len(reader.records())
     a, b = xr.open_dataset(res["nc_file"]), xr.open_dataset(again["nc_file"])
     np.testing.assert_array_equal(a["cluster_tag"].values, b["cluster_tag"].values)

@@ -2,7 +2,7 @@
 # Needs the demo output first:  make median-demo
 # Run:  make plot-fov CONFIG=configs/plot_fov_demo.toml
 [plot]
-inputs = ["data/outputs/demo/bks/20250208.0300.00.bks.fitacf.pp.bz2"]
+inputs = ["data/outputs/demo/bks/bks_202502080300_202502080400.pp.nc"]   # the .nc has gflg_conv; the .fitacf.pp.bz2 does not (extra_fields = false)
 time   = 2025-02-08T03:30:00
 params = ["v", "gflg_conv"]
 coords = "geo"

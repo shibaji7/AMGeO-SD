@@ -187,7 +187,6 @@ def test_archive_lookup_skips_fitacfpp_files(tmp_path):
     d.mkdir(parents=True)
     (d / "20150317.0200.00.bks.a.fitacf.bz2").touch()
     (d / "20150317.0200.00.bks.fitacf.pp.bz2").touch()
-    (d / "20150317.0200.00.bks.fitacf.pl.bz2").touch()  # earlier name of the same files
     got = find_fitacf_files("bks", dt.datetime(2015, 3, 17, 2), dt.datetime(2015, 3, 17, 3), root=tmp_path)
     assert [p.name for p in got] == ["20150317.0200.00.bks.a.fitacf.bz2"]
 

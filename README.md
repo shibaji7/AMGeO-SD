@@ -109,13 +109,15 @@ Results go to `<out>/<sim_id>/<rad>/` (default `data/outputs/L100/<rad>/`):
 | File | Content |
 |---|---|
 | `<rad>_<start>_<end>.pp.nc` | NetCDF4: geometry `gdlat gdlon gdazm`, per-beam metadata, per-echo `v w_l p_l gflg ...` on a (scan, beam slot, gate) grid, NaN = no echo |
-| `<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2` | the same data as a bz2 DMAP file, one record per beam, all original fitacf fields kept |
+| `<YYYYMMDD.HHMM.SS>.<rad>.fitacf.pp.bz2` | the same echoes as a bz2 DMAP file, one record per beam, **standard fitacf fields only** (so `pydarnio.read_fitacf` and other fitacf tools open it); `extra_fields = true` adds the labels, see [the extra fields](docs/USAGE.md#the-extra-fields) |
 | `params.toml` | every parameter of the run, annotated, plus provenance and result counts; can be fed back with `CONFIG=` |
 | `script.cmd` | the exact command line |
 
-`.pp` stands for "plus plus". Files an earlier version wrote as `.fitacf.pl.bz2` are still read.
-`pydarnio.read_fitacf` rejects the extra fields of `.fitacf.pp.bz2`; read them with `amgeo_sd.io.read_fitacf_file`
-(or `pydarnio.read_dmap`).
+`.pp` stands for "plus plus". The `.pp.nc` always holds every flag and label (`gflg_conv`, `gflg_kde`, `v_mad`, `clabel`,
+`cluster_tag`, `gflg_ribiero`). The `.fitacf.pp.bz2` is meant to be read by other fitacf tools, so by default it holds only
+standard fitacf fields; set `[output] extra_fields = true` (`--extra-fields`) to store those labels in it too, at the price that
+only generic DMAP readers can open it. What the extra fields are and what that means is in
+[the usage guide](docs/USAGE.md#the-extra-fields).
 
 ## Plots
 

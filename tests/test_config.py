@@ -113,3 +113,18 @@ def test_median_defaults_and_edge_gates_validation(tmp_path):
     f.write_text(f.read_text().replace("missing", "clip"))
     with pytest.raises(ValueError, match="edge_gates"):
         load_settings(f)
+
+
+def test_extra_fields_setting_defaults_to_off_and_is_set_by_toml_and_flag(tmp_path, capsys):
+    from amgeo_sd.cli import main
+
+    assert Settings().output.extra_fields is False
+    toml = tmp_path / "p.toml"
+    toml.write_text("[output]\nextra_fields = true\n")
+    assert load_settings(
+        toml, {"run": {"rad": "bks", "start": "2025-02-08T03:00", "end": "2025-02-08T04:00"}}
+    ).output.extra_fields
+    for cmd in ("median", "dbscan"):
+        base = [cmd, "--print-config", "-r", "bks", "-s", "2025-02-08T03:00", "-e", "2025-02-08T04:00"]
+        assert main(base) == 0 and '"extra_fields": false' in capsys.readouterr().out
+        assert main([*base, "--extra-fields"]) == 0 and '"extra_fields": true' in capsys.readouterr().out

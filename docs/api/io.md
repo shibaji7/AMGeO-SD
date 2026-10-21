@@ -23,9 +23,9 @@ Back to the [API overview](../API.md) · [README](../../README.md) · [usage gui
 | [`beam_to_record`](#beam_to_record) | Build the fitacf++ record of ``beam`` from the original ``template`` record. |
 | [`scans_to_records`](#scans_to_records) | fitacf++ records for the beams of ``scans``, in time order. |
 | [`fitacfpp_name`](#fitacfpp_name) | ``YYYYMMDD.HHMM.SS.<rad>.fitacf.pp.bz2``: the archive naming with the fitacf++ suffix. |
-| [`write_fitacfpp`](#write_fitacfpp) | Write ``records`` as a bz2-compressed DMAP stream (generic writer: allows the extra fields). |
+| [`write_fitacfpp`](#write_fitacfpp) | Write ``records`` as a bz2-compressed DMAP stream. |
 | [`FITACFPP_SUFFIX`](#constants) | File-name ending of fitacf++ DMAP files (`.fitacf.pp.bz2`). |
-| [`LEGACY_FITACFPP_SUFFIXES`](#constants) | Endings an earlier version wrote; such files are still read and are skipped when searching an archive. |
+| [`EXTRA_RECORD_FIELDS`](#constants) | The non-standard DMAP fields written when `extra_fields` is on; every other field is a standard fitacf field. |
 
 ## `FitacfReader`
 
@@ -370,7 +370,7 @@ Read a fitacf++ NetCDF into scans (one [`Scan`](models.md#scan) per ``scan_num``
 ## `beam_to_record`
 
 ```python
-beam_to_record(beam: Beam, template: dict) -> dict
+beam_to_record(beam: Beam, template: dict, extra_fields: bool = False) -> dict
 ```
 
 Build the fitacf++ record of ``beam`` from the original ``template`` record.
@@ -381,10 +381,11 @@ Build the fitacf++ record of ``beam`` from the original ``template`` record.
 |---|---|---|---|
 | `beam` | Beam | required | The processed beam (its ``slist``, ``v``, ``w_l``, ``p_l``, ``gflg`` and ``extra`` arrays replace the template's). |
 | `template` | dict | required | The raw record of the same sounding; all its other fields are kept. |
+| `extra_fields` | bool | `False` | Also store the non-standard arrays of [`EXTRA_RECORD_FIELDS`](io.md#constants) that the beam carries. ``False`` leaves a record of standard fitacf fields only (any such field already in the template is removed). |
 
 **Returns**
 
-- *dict* — A DMAP record with every field of the template. ``slist``, ``v``, ``w_l``, ``p_l`` and ``gflg`` are the beam's; ``v_e`` is its ``v_mad`` when present; ``qflg`` is 1 for cells the filter added; other per-echo arrays are carried over for gates that held an echo in the template (NaN or 0 for added cells); ``v_mad``, ``gflg_conv``, ``gflg_kde``, ``clabel``, ``cluster_tag`` and ``gflg_ribiero`` are added when the beam has them.
+- *dict* — A DMAP record with every field of the template. ``slist``, ``v``, ``w_l``, ``p_l`` and ``gflg`` are the beam's; ``v_e`` is its ``v_mad`` when present; ``qflg`` is 1 for cells the filter added; other per-echo arrays are carried over for gates that held an echo in the template (NaN or 0 for added cells); ``v_mad``, ``gflg_conv``, ``gflg_kde``, ``clabel``, ``cluster_tag`` and ``gflg_ribiero`` are added when ``extra_fields`` is on and the beam has them.
 
 ## `scans_to_records`
 
@@ -395,6 +396,7 @@ scans_to_records(
     command: str = '',
     model: str = 'median',
     keep_empty: bool = False,
+    extra_fields: bool = False,
 ) -> list[dict]
 ```
 
@@ -413,6 +415,7 @@ By default beams without echoes are dropped and the scan flag is re-set on the f
 | `command` | str | `''` | Text for ``origin.command`` (the command line of the run); ``"amgeo_sd"`` when empty. |
 | `model` | str | `'median'` | Stored in ``amgeo.model``: ``"median"`` or ``"dbscan"``. |
 | `keep_empty` | bool | `False` | Write beams without echoes too and keep the original scan flags. |
+| `extra_fields` | bool | `False` | Store the non-standard fields ([`EXTRA_RECORD_FIELDS`](io.md#constants): ``v_mad``, ``gflg_conv``, ``gflg_kde``, ``clabel``, ``cluster_tag``, ``gflg_ribiero``, ``amgeo.model``, ``amgeo.version``). Off by default, so that ``pydarnio.read_fitacf`` and other fitacf readers can open the file. |
 
 **Returns**
 
@@ -443,9 +446,15 @@ fitacfpp_name(rad: str, start: dt.datetime) -> str
 write_fitacfpp(path: str | os.PathLike, records: Sequence[dict]) -> Path
 ```
 
-Write ``records`` as a bz2-compressed DMAP stream (generic writer: allows the extra fields).
+Write ``records`` as a bz2-compressed DMAP stream.
 
-``pydarnio.write_dmap`` *appends* to an existing file, so the data go to a temporary file that
+Records of standard fitacf fields only (``extra_fields`` off) go through ``pydarnio.write_fitacf``, which stores every
+field with its fitacf data type, so ``pydarnio.read_fitacf``, pydarn and other fitacf readers open the file. If a
+record is not valid fitacf (e.g. a field is missing) a warning is logged and the generic writer is used instead. Records
+with the non-standard fields ([`EXTRA_RECORD_FIELDS`](io.md#constants)) always use ``pydarnio.write_dmap``, which infers the data
+types: read such a file with [`read_fitacf_file`](io.md#read_fitacf_file) or ``pydarnio.read_dmap``.
+
+``pydarnio`` *appends* to an existing file, so the data go to a temporary file that
 replaces ``path`` atomically; re-running a pipeline therefore never duplicates records.
 
 **Parameters**
@@ -464,4 +473,4 @@ replaces ``path`` atomically; re-running a pipeline therefore never duplicates r
 | Name | Value | Meaning |
 |---|---|---|
 | `FITACFPP_SUFFIX` | `'.fitacf.pp.bz2'` | File-name ending of fitacf++ DMAP files (`.fitacf.pp.bz2`). |
-| `LEGACY_FITACFPP_SUFFIXES` | `('.fitacf.pl.bz2',)` | Endings an earlier version wrote; such files are still read and are skipped when searching an archive. |
+| `EXTRA_RECORD_FIELDS` | `('v_mad', 'gflg_conv', 'gflg_kde', 'clabel', 'cluster_tag...` | The non-standard DMAP fields written when `extra_fields` is on; every other field is a standard fitacf field. |

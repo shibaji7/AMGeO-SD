@@ -40,8 +40,6 @@ DATA_ROOT_ENV = "AMGEO_SD_DATA"
 DEFAULT_LAYOUT = "{year}/{ftype}/{rad}/{date}.*{ftype}*"
 #: Suffix of fitacf++ DMAP files (see :mod:`amgeo_sd.io.writer`); the raw-data archive lookup skips them.
 FITACFPP_SUFFIX = ".fitacf.pp.bz2"
-#: Earlier name of the same files (``.fitacf.pl.bz2``); still read, and also skipped by the archive lookup.
-LEGACY_FITACFPP_SUFFIXES = (".fitacf.pl.bz2",)
 #: Each archive file spans two hours.
 FILE_SPAN = dt.timedelta(hours=2)
 
@@ -379,7 +377,7 @@ def find_fitacf_files(
     while day <= end:
         pattern = layout.format(year=day.year, ftype=ftype, rad=rad, date=day.strftime("%Y%m%d"))
         for path in root.glob(pattern):
-            if path.name.endswith((FITACFPP_SUFFIX, *LEGACY_FITACFPP_SUFFIXES)):
+            if path.name.endswith(FITACFPP_SUFFIX):
                 continue  # filtered data, never mixed with the raw archive
             t0 = _file_start(path)
             if t0 is not None and t0 <= end and t0 + FILE_SPAN > start:

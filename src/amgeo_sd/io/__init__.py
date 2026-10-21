@@ -1,7 +1,6 @@
 """Reading SuperDARN data products."""
 
 from amgeo_sd.io.fitacf import (
-    LEGACY_FITACFPP_SUFFIXES,
     FitacfReader,
     beams_to_dataframe,
     beams_to_scans,
@@ -12,7 +11,14 @@ from amgeo_sd.io.fitacf import (
 )
 from amgeo_sd.io.load import expand_paths, load_frame, load_scans, read_fitacfpp_nc
 from amgeo_sd.io.summary import estimate_scan_info
-from amgeo_sd.io.writer import FITACFPP_SUFFIX, beam_to_record, fitacfpp_name, scans_to_records, write_fitacfpp
+from amgeo_sd.io.writer import (
+    EXTRA_RECORD_FIELDS,
+    FITACFPP_SUFFIX,
+    beam_to_record,
+    fitacfpp_name,
+    scans_to_records,
+    write_fitacfpp,
+)
 
 __all__ = [
     "FitacfReader",
@@ -32,5 +38,5 @@ __all__ = [
     "fitacfpp_name",
     "write_fitacfpp",
     "FITACFPP_SUFFIX",
-    "LEGACY_FITACFPP_SUFFIXES",
+    "EXTRA_RECORD_FIELDS",
 ]
