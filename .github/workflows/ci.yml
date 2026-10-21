@@ -21,7 +21,7 @@ jobs:
         run: |
           ruff check src tests examples
           ruff format --check src tests
-      - name: Tests (the real-data tests skip: tests/data is not in the repository)
+      - name: "Tests (the real-data tests skip, tests/data is not in the repository)"
         run: pytest -q
       - name: Generated documentation is up to date
         run: |
