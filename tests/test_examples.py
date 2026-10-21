@@ -84,7 +84,7 @@ def test_plot_day_makes_the_three_figures(work, capsys):
     assert all((work / "figures" / n).stat().st_size > 5000 for n in made)
 
 
-def test_missing_outputs_give_a_helpful_message(tmp_path):
+def test_missing_outputs_give_a_helpful_message(tmp_path, fitacf_files):  # reads the raw data first
     with pytest.raises(SystemExit, match="make median"):
         analysis_day.main(["--rad", "bks", "--work", str(tmp_path), "--data", str(DATA)])
 
